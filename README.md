@@ -32,6 +32,8 @@ Environment variables:
 
 The exporter has been validated on the following platforms:
 
+These tests were done with SONiC Community versions, not SONiC Enterprise versions.
+
 | Model Number | SONiC Software Version | SONiC OS Version | Distribution | Kernel | Platform | ASIC |
 |---|---|---|---|---|---|---|
 | DellEMC-S5232f-C8D48 | SONIC.202012 | N/A | Debian 10.13 | 4.19.0-12-2-amd64 | x86_64-dellemc_s5232f_c3538-r0 | broadcom |
