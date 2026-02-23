@@ -24,4 +24,4 @@ jobs:
           go-version-file: 'go.mod'
           cache: false
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run
