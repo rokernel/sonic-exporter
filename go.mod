@@ -13,7 +13,6 @@ require (
 	github.com/prometheus/exporter-toolkit v0.14.1
 	github.com/prometheus/node_exporter v1.10.2
 	github.com/redis/go-redis/v9 v9.6.1
-	github.com/tynany/frr_exporter v1.9.0
 )
 
 require (

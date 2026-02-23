@@ -8,6 +8,7 @@
 *.so
 *.dylib
 /sonic-exporter
+/build/
 
 # Test binary, built with `go test -c`
 *.test

@@ -46,6 +46,28 @@ $ docker-compose down
 $ docker-compose up --build -d
 ```
 
+4. To build a local binary:
+```bash
+$ ./scripts/build.sh
+```
+
+This script builds a static Linux binary (`CGO_ENABLED=0`), which is safer for older SONiC images.
+
+Optional cross-build example:
+```bash
+$ TARGET_OS=linux TARGET_ARCH=amd64 ./scripts/build.sh
+```
+
+5. To build a release tarball (binary + sha256):
+```bash
+$ ./scripts/package.sh
+```
+
+Optional package version override:
+```bash
+$ VERSION=v0.1.0 ./scripts/package.sh
+```
+
 In case you need to add additional keys to redis database don't forget to run `SAVE` in redis after doing so:
 ```bash
 $ redis-cli

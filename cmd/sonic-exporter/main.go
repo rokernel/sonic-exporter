@@ -12,22 +12,23 @@ import (
 	"github.com/prometheus/exporter-toolkit/web"
 	webflag "github.com/prometheus/exporter-toolkit/web/kingpinflag"
 	nodecollector "github.com/prometheus/node_exporter/collector"
-	frrcollector "github.com/tynany/frr_exporter/collector"
 	"github.com/vinted/sonic-exporter/internal/collector"
 )
 
 func main() {
-	// setup frr and node exporters (default flag values + hardcoded flags)
+	// setup node exporter collectors through global kingpin flags
 	kingpin.CommandLine.Parse([]string{
-		"--frr.vtysh",
-		"--collector.bgp6",
-		"--collector.bgpl2vpn",
-		"--no-collector.route",
-		"--no-collector.bfd",
-		"--no-collector.ospf",
+		"--collector.disable-defaults",
+		"--collector.loadavg",
+		"--collector.cpu",
+		"--collector.diskstats",
+		"--collector.filesystem",
+		"--collector.meminfo",
+		"--collector.time",
+		"--collector.stat",
 	})
 
-	// New kingpin instance to prevent imported code from adding flags (frr and node exporters)
+	// New kingpin instance to prevent imported code from adding flags (node exporter)
 	kp := kingpin.New("sonic-exporter", "Prometheus exporter for SONiC network switches")
 
 	var (
@@ -68,14 +69,6 @@ func main() {
 		os.Exit(1)
 	}
 	prometheus.MustRegister(nodeCollector)
-
-	// FRR exporter
-	frrExporter, err := frrcollector.NewExporter(logger)
-	if err != nil {
-		logger.Error("Failed to create FRR exporter", "error", err)
-		os.Exit(1)
-	}
-	prometheus.MustRegister(frrExporter)
 
 	http.Handle(*metricsPath, promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
