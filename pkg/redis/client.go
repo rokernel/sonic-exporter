@@ -120,6 +120,34 @@ func (c Client) KeysFromDb(ctx context.Context, dbName, pattern string) ([]strin
 	return keys, err
 }
 
+func (c Client) ScanKeysFromDb(ctx context.Context, dbName, pattern string, count int64) ([]string, error) {
+	client, err := c.selectClient(dbName)
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		keys   []string
+		cursor uint64
+	)
+
+	for {
+		scannedKeys, nextCursor, err := client.Scan(ctx, cursor, pattern, count).Result()
+		if err != nil {
+			return nil, err
+		}
+
+		keys = append(keys, scannedKeys...)
+		cursor = nextCursor
+
+		if cursor == 0 {
+			break
+		}
+	}
+
+	return keys, nil
+}
+
 func (c Client) Close() {
 	for name, client := range c.databases {
 		client.Close()

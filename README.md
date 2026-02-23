@@ -5,8 +5,9 @@ Prometheus exporter for [SONiC](https://github.com/sonic-net/SONiC) NOS.
 Currently supported collectors:
 - [HW collector](internal/collector/hw_collector.go): collects metrics about PSU and Fan operation
 - [Interface collector](internal/collector/interface_collector.go): collect metrics about interface operation and performance.
-- [CRM collector](internal/collector/hw_collector.go): collects Critial Resource Monitoring metrics.
+- [CRM collector](internal/collector/crm_collector.go): collects Critial Resource Monitoring metrics.
 - [Queue collector](internal/collector/queue_collector.go): collects metrics about queues.
+- [LLDP collector](internal/collector/lldp_collector.go): collects LLDP neighbor information from SONiC Redis.
 
 # Usage
 
@@ -27,6 +28,11 @@ Environment variables:
 - `REDIS_ADDRESS` - redis connection string, if using unix socket set `REDIS_NETWORK` to `unix`. Default: `localhost:6379`.
 - `REDIS_PASSWORD` - password used when connecting to redis.
 - `REDIS_NETWORK` - redis network type, either tcp or unix. Default: `tcp`.
+- `LLDP_ENABLED` - enable LLDP collector. Default: `true`.
+- `LLDP_INCLUDE_MGMT` - include management interface LLDP entries (for example `eth0`). Default: `true`.
+- `LLDP_REFRESH_INTERVAL` - LLDP cache refresh interval. Default: `30s`.
+- `LLDP_TIMEOUT` - timeout for one LLDP refresh cycle. Default: `2s`.
+- `LLDP_MAX_NEIGHBORS` - maximum number of LLDP neighbors exported per refresh. Default: `512`.
 
 ## Validated Platforms
 
