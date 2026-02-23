@@ -51,6 +51,33 @@
     },
     "LLDP_ENTRY_TABLE:Ethernet0": {
       "lldp_rem_index": "1"
+    },
+    "VLAN_TABLE:Vlan1000": {
+      "admin_status": "up",
+      "oper_status": "up"
+    },
+    "VLAN_TABLE:Vlan2000": {
+      "admin_status": "down",
+      "oper_status": "down"
+    },
+    "LAG_TABLE:PortChannel1": {
+      "mtu": "9100",
+      "admin_status": "up",
+      "oper_status": "up"
+    },
+    "LAG_TABLE:PortChannel2": {
+      "mtu": "9100",
+      "admin_status": "up",
+      "oper_status": "down"
+    },
+    "LAG_MEMBER_TABLE:PortChannel1:Ethernet24": {
+      "status": "enabled"
+    },
+    "LAG_MEMBER_TABLE:PortChannel1:Ethernet28": {
+      "status": "disabled"
+    },
+    "LAG_MEMBER_TABLE:PortChannel2:Ethernet92": {
+      "status": "enabled"
     }
   }
 }

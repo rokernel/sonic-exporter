@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -17,7 +18,7 @@ import (
 
 func main() {
 	// setup node exporter collectors through global kingpin flags
-	kingpin.CommandLine.Parse([]string{
+	_, err := kingpin.CommandLine.Parse([]string{
 		"--collector.disable-defaults",
 		"--collector.loadavg",
 		"--collector.cpu",
@@ -27,6 +28,10 @@ func main() {
 		"--collector.time",
 		"--collector.stat",
 	})
+	if err != nil {
+		slog.Error("failed to parse node exporter collector defaults", "error", err)
+		os.Exit(1)
+	}
 
 	// New kingpin instance to prevent imported code from adding flags (node exporter)
 	kp := kingpin.New("sonic-exporter", "Prometheus exporter for SONiC network switches")
@@ -40,7 +45,10 @@ func main() {
 	flag.AddFlags(kp, promslogConfig)
 	kp.HelpFlag.Short('h')
 	kp.UsageWriter(os.Stdout)
-	kp.Parse(os.Args[1:])
+	if _, err = kp.Parse(os.Args[1:]); err != nil {
+		slog.Error("failed to parse command line arguments", "error", err)
+		os.Exit(1)
+	}
 
 	logger := promslog.New(promslogConfig)
 
@@ -50,12 +58,20 @@ func main() {
 	crmCollector := collector.NewCrmCollector(logger)
 	queueCollector := collector.NewQueueCollector(logger)
 	lldpCollector := collector.NewLldpCollector(logger)
+	vlanCollector := collector.NewVlanCollector(logger)
+	lagCollector := collector.NewLagCollector(logger)
 	prometheus.MustRegister(interfaceCollector)
 	prometheus.MustRegister(hwCollector)
 	prometheus.MustRegister(crmCollector)
 	prometheus.MustRegister(queueCollector)
 	if lldpCollector.IsEnabled() {
 		prometheus.MustRegister(lldpCollector)
+	}
+	if vlanCollector.IsEnabled() {
+		prometheus.MustRegister(vlanCollector)
+	}
+	if lagCollector.IsEnabled() {
+		prometheus.MustRegister(lagCollector)
 	}
 
 	// Node exporter collectors

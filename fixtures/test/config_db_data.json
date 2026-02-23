@@ -32,6 +32,28 @@
       "lanes": "125,126,127,128",
       "mtu": "9100",
       "speed": "100000"
+    },
+    "VLAN|Vlan1000": {
+      "admin_status": "up",
+      "vlanid": "1000"
+    },
+    "VLAN|Vlan2000": {
+      "admin_status": "down",
+      "vlanid": "2000"
+    },
+    "VLAN_MEMBER|Vlan1000|Ethernet0": {
+      "tagging_mode": "untagged"
+    },
+    "VLAN_MEMBER|Vlan1000|PortChannel1": {
+      "tagging_mode": "tagged"
+    },
+    "PORTCHANNEL|PortChannel1": {
+      "admin_status": "up",
+      "mtu": "9100"
+    },
+    "PORTCHANNEL|PortChannel2": {
+      "admin_status": "up",
+      "mtu": "9100"
     }
   }
 }
