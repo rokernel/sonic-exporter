@@ -75,6 +75,8 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Setenv("REDIS_ADDRESS", s.Addr())
+	os.Setenv("LLDP_ENABLED", "true")
+	os.Setenv("LLDP_INCLUDE_MGMT", "true")
 	err = populateRedisData()
 	if err != nil {
 		slog.Error("failed to populate redis data", "error", err)
@@ -85,6 +87,8 @@ func TestMain(m *testing.M) {
 
 	s.Close()
 	os.Unsetenv("REDIS_ADDRESS")
+	os.Unsetenv("LLDP_ENABLED")
+	os.Unsetenv("LLDP_INCLUDE_MGMT")
 	os.Exit(exitCode)
 }
 
@@ -220,6 +224,55 @@ func TestQueueCollector(t *testing.T) {
 	success_metric := "sonic_queue_collector_success"
 
 	if err := testutil.CollectAndCompare(queueCollector, strings.NewReader(metadata+expected), success_metric); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+}
+
+func TestLldpCollector(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	lldpCollector := NewLldpCollector(logger)
+
+	problems, err := testutil.CollectAndLint(lldpCollector)
+	if err != nil {
+		t.Error("metric lint completed with errors")
+	}
+
+	metricCount := testutil.CollectAndCount(lldpCollector)
+	t.Logf("metric count: %v", metricCount)
+
+	for _, problem := range problems {
+		t.Errorf("metric %v has a problem: %v", problem.Metric, problem.Text)
+	}
+
+	metadata := `
+		# HELP sonic_lldp_collector_success Whether LLDP collector succeeded
+		# TYPE sonic_lldp_collector_success gauge
+		# HELP sonic_lldp_neighbors Number of LLDP neighbors exported
+		# TYPE sonic_lldp_neighbors gauge
+	`
+
+	expected := `
+		sonic_lldp_collector_success 1
+		sonic_lldp_neighbors 2
+	`
+
+	if err := testutil.CollectAndCompare(lldpCollector, strings.NewReader(metadata+expected), "sonic_lldp_collector_success", "sonic_lldp_neighbors"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+
+	neighborMetadata := `
+		# HELP sonic_lldp_neighbor_info Non-numeric data about LLDP neighbor, value is always 1
+		# TYPE sonic_lldp_neighbor_info gauge
+	`
+
+	neighborExpected := `
+		sonic_lldp_neighbor_info{local_interface="Ethernet88",local_role="frontpanel",remote_chassis_id="74:86:e2:6d:df:a5",remote_mgmt_ip="192.168.240.123",remote_port_id="hundredGigE1/23",remote_system_name="net-tor-lab001.lau1"} 1
+		sonic_lldp_neighbor_info{local_interface="eth0",local_role="management",remote_chassis_id="00:11:22:33:44:55",remote_mgmt_ip="192.168.240.1",remote_port_id="mgmt0",remote_system_name="oob-switch01"} 1
+	`
+
+	if err := testutil.CollectAndCompare(lldpCollector, strings.NewReader(neighborMetadata+neighborExpected), "sonic_lldp_neighbor_info"); err != nil {
 		t.Errorf("unexpected collecting result:\n%s", err)
 	}
 }

@@ -49,10 +49,14 @@ func main() {
 	hwCollector := collector.NewHwCollector(logger)
 	crmCollector := collector.NewCrmCollector(logger)
 	queueCollector := collector.NewQueueCollector(logger)
+	lldpCollector := collector.NewLldpCollector(logger)
 	prometheus.MustRegister(interfaceCollector)
 	prometheus.MustRegister(hwCollector)
 	prometheus.MustRegister(crmCollector)
 	prometheus.MustRegister(queueCollector)
+	if lldpCollector.IsEnabled() {
+		prometheus.MustRegister(lldpCollector)
+	}
 
 	// Node exporter collectors
 	nodeCollector, err := nodecollector.NewNodeCollector(logger,
