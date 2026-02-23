@@ -35,7 +35,7 @@ The exporter has been validated on the following platforms:
 | Model Number | SONiC Software Version | SONiC OS Version | Distribution | Kernel | Platform | ASIC |
 |---|---|---|---|---|---|---|
 | DellEMC-S5232f-C8D48 | SONIC.202012 | N/A | Debian 10.13 | 4.19.0-12-2-amd64 | x86_64-dellemc_s5232f_c3538-r0 | broadcom |
-| SSE-T7132SR | SONiC.3.1.6.0-0012 | 12 | Debian 12.11 | 6.1.0-29-2-amd64 | x86_64-supermicro_sse_t7132s-r0 | marvell-teralynx |
+| SSE-T7132SR | 202505 | 12 | Debian 12.11 | 6.1.0-29-2-amd64 | x86_64-supermicro_sse_t7132s-r0 | marvell-teralynx |
 | MSN2100-CB2FC | SONiC.202411 | 12 | Debian 12.12 | 6.1.0-29-2-amd64 | x86_64-mlnx_msn2100-r0 | mellanox |
 
 # Development
