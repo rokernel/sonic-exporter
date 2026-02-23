@@ -77,6 +77,8 @@ func TestMain(m *testing.M) {
 	os.Setenv("REDIS_ADDRESS", s.Addr())
 	os.Setenv("LLDP_ENABLED", "true")
 	os.Setenv("LLDP_INCLUDE_MGMT", "true")
+	os.Setenv("VLAN_ENABLED", "true")
+	os.Setenv("LAG_ENABLED", "true")
 	err = populateRedisData()
 	if err != nil {
 		slog.Error("failed to populate redis data", "error", err)
@@ -89,6 +91,8 @@ func TestMain(m *testing.M) {
 	os.Unsetenv("REDIS_ADDRESS")
 	os.Unsetenv("LLDP_ENABLED")
 	os.Unsetenv("LLDP_INCLUDE_MGMT")
+	os.Unsetenv("VLAN_ENABLED")
+	os.Unsetenv("LAG_ENABLED")
 	os.Exit(exitCode)
 }
 
@@ -273,6 +277,101 @@ func TestLldpCollector(t *testing.T) {
 	`
 
 	if err := testutil.CollectAndCompare(lldpCollector, strings.NewReader(neighborMetadata+neighborExpected), "sonic_lldp_neighbor_info"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+}
+
+func TestVlanCollector(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	vlanCollector := NewVlanCollector(logger)
+
+	problems, err := testutil.CollectAndLint(vlanCollector)
+	if err != nil {
+		t.Error("metric lint completed with errors")
+	}
+
+	for _, problem := range problems {
+		t.Errorf("metric %v has a problem: %v", problem.Metric, problem.Text)
+	}
+
+	metadata := `
+		# HELP sonic_vlan_collector_success Whether VLAN collector succeeded
+		# TYPE sonic_vlan_collector_success gauge
+		# HELP sonic_vlan_members Number of VLAN members
+		# TYPE sonic_vlan_members gauge
+	`
+
+	expected := `
+		sonic_vlan_collector_success 1
+		sonic_vlan_members{vlan="Vlan1000"} 2
+		sonic_vlan_members{vlan="Vlan2000"} 0
+	`
+
+	if err := testutil.CollectAndCompare(vlanCollector, strings.NewReader(metadata+expected), "sonic_vlan_collector_success", "sonic_vlan_members"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+
+	memberMetadata := `
+		# HELP sonic_vlan_member_info Non-numeric data about VLAN member, value is always 1
+		# TYPE sonic_vlan_member_info gauge
+	`
+
+	memberExpected := `
+		sonic_vlan_member_info{member="Ethernet0",tagging_mode="untagged",vlan="Vlan1000"} 1
+		sonic_vlan_member_info{member="PortChannel1",tagging_mode="tagged",vlan="Vlan1000"} 1
+	`
+
+	if err := testutil.CollectAndCompare(vlanCollector, strings.NewReader(memberMetadata+memberExpected), "sonic_vlan_member_info"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+}
+
+func TestLagCollector(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	lagCollector := NewLagCollector(logger)
+
+	problems, err := testutil.CollectAndLint(lagCollector)
+	if err != nil {
+		t.Error("metric lint completed with errors")
+	}
+
+	for _, problem := range problems {
+		t.Errorf("metric %v has a problem: %v", problem.Metric, problem.Text)
+	}
+
+	metadata := `
+		# HELP sonic_lag_collector_success Whether LAG collector succeeded
+		# TYPE sonic_lag_collector_success gauge
+		# HELP sonic_lag_members Number of LAG member interfaces
+		# TYPE sonic_lag_members gauge
+	`
+
+	expected := `
+		sonic_lag_collector_success 1
+		sonic_lag_members{lag="PortChannel1"} 2
+		sonic_lag_members{lag="PortChannel2"} 1
+	`
+
+	if err := testutil.CollectAndCompare(lagCollector, strings.NewReader(metadata+expected), "sonic_lag_collector_success", "sonic_lag_members"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+
+	memberMetadata := `
+		# HELP sonic_lag_member_status Status of LAG member interface (1=enabled, 0=disabled)
+		# TYPE sonic_lag_member_status gauge
+	`
+
+	memberExpected := `
+		sonic_lag_member_status{lag="PortChannel1",member="Ethernet24"} 1
+		sonic_lag_member_status{lag="PortChannel1",member="Ethernet28"} 0
+		sonic_lag_member_status{lag="PortChannel2",member="Ethernet92"} 1
+	`
+
+	if err := testutil.CollectAndCompare(lagCollector, strings.NewReader(memberMetadata+memberExpected), "sonic_lag_member_status"); err != nil {
 		t.Errorf("unexpected collecting result:\n%s", err)
 	}
 }

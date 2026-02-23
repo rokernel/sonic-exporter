@@ -8,6 +8,8 @@ Currently supported collectors:
 - [CRM collector](internal/collector/crm_collector.go): collects Critial Resource Monitoring metrics.
 - [Queue collector](internal/collector/queue_collector.go): collects metrics about queues.
 - [LLDP collector](internal/collector/lldp_collector.go): collects LLDP neighbor information from SONiC Redis.
+- [VLAN collector](internal/collector/vlan_collector.go): collects VLAN and VLAN member state from SONiC Redis.
+- [LAG collector](internal/collector/lag_collector.go): collects PortChannel and member state from SONiC Redis.
 
 # Usage
 
@@ -33,6 +35,16 @@ Environment variables:
 - `LLDP_REFRESH_INTERVAL` - LLDP cache refresh interval. Default: `30s`.
 - `LLDP_TIMEOUT` - timeout for one LLDP refresh cycle. Default: `2s`.
 - `LLDP_MAX_NEIGHBORS` - maximum number of LLDP neighbors exported per refresh. Default: `512`.
+- `VLAN_ENABLED` - enable VLAN collector. Default: `true`.
+- `VLAN_REFRESH_INTERVAL` - VLAN cache refresh interval. Default: `30s`.
+- `VLAN_TIMEOUT` - timeout for one VLAN refresh cycle. Default: `2s`.
+- `VLAN_MAX_VLANS` - maximum number of VLANs exported per refresh. Default: `1024`.
+- `VLAN_MAX_MEMBERS` - maximum number of VLAN members exported per refresh. Default: `8192`.
+- `LAG_ENABLED` - enable LAG collector. Default: `true`.
+- `LAG_REFRESH_INTERVAL` - LAG cache refresh interval. Default: `30s`.
+- `LAG_TIMEOUT` - timeout for one LAG refresh cycle. Default: `2s`.
+- `LAG_MAX_LAGS` - maximum number of LAGs exported per refresh. Default: `512`.
+- `LAG_MAX_MEMBERS` - maximum number of LAG members exported per refresh. Default: `4096`.
 
 ## Validated Platforms
 

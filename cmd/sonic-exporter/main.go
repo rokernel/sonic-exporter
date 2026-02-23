@@ -50,12 +50,20 @@ func main() {
 	crmCollector := collector.NewCrmCollector(logger)
 	queueCollector := collector.NewQueueCollector(logger)
 	lldpCollector := collector.NewLldpCollector(logger)
+	vlanCollector := collector.NewVlanCollector(logger)
+	lagCollector := collector.NewLagCollector(logger)
 	prometheus.MustRegister(interfaceCollector)
 	prometheus.MustRegister(hwCollector)
 	prometheus.MustRegister(crmCollector)
 	prometheus.MustRegister(queueCollector)
 	if lldpCollector.IsEnabled() {
 		prometheus.MustRegister(lldpCollector)
+	}
+	if vlanCollector.IsEnabled() {
+		prometheus.MustRegister(vlanCollector)
+	}
+	if lagCollector.IsEnabled() {
+		prometheus.MustRegister(lagCollector)
 	}
 
 	// Node exporter collectors
