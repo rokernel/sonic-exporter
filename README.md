@@ -65,6 +65,55 @@ These tests were done with SONiC Community versions, not SONiC Enterprise versio
 | SSE-T7132SR | 202505 | 12 | Debian 12.11 | 6.1.0-29-2-amd64 | x86_64-supermicro_sse_t7132s-r0 | marvell-teralynx |
 | MSN2100-CB2FC | 202411 | 12 | Debian 12.12 | 6.1.0-29-2-amd64 | x86_64-mlnx_msn2100-r0 | mellanox |
 
+## Collector Examples (Anonymized, Compact)
+
+These examples are synthetic and anonymized. Use them as query patterns. Labels can vary by SONiC platform/version.
+
+- **Interface collector** - interface health and traffic
+  - `sonic_interface_operational_status{device="Ethernet0"} 1`
+  - `sonic_interface_receive_bytes_total{device="Ethernet0"} 4.8e+09`
+  - Query: `rate(sonic_interface_receive_bytes_total[5m])`
+
+- **HW collector** - PSU and fan status
+  - `sonic_hw_psu_operational_status{psu="PSU1"} 1`
+  - `sonic_hw_fan_speed_rpm{fan="FAN3"} 14200`
+  - Query: `sonic_hw_psu_operational_status == 0`
+
+- **CRM collector** - resource usage and headroom
+  - `sonic_crm_stats_used{resource="ipv4_route"} 1610`
+  - `sonic_crm_stats_available{resource="ipv4_route"} 80299`
+  - Query: `100 * sonic_crm_stats_used / (sonic_crm_stats_used + sonic_crm_stats_available)`
+
+- **Queue collector** - queue drops and watermark pressure
+  - `sonic_queue_dropped_packets_total{device="Ethernet0",queue="3"} 73`
+  - `sonic_queue_watermark_bytes_total{device="Ethernet0",queue="3",type="periodic",watermark="queue_stat_periodic"} 44`
+  - Query: `rate(sonic_queue_dropped_packets_total[5m])`
+
+- **LLDP collector** - neighbor discovery and cache health
+  - `sonic_lldp_neighbor_info{local_interface="Ethernet88",local_role="frontpanel",remote_system_name="leaf02.example.net",remote_port_id="Ethernet88",remote_chassis_id="00:11:22:33:44:55",remote_mgmt_ip="192.0.2.20"} 1`
+  - `sonic_lldp_neighbors 64`
+  - Query: `sonic_lldp_neighbors`
+
+- **VLAN collector** - VLAN state and member mapping
+  - `sonic_vlan_admin_status{vlan="Vlan1000"} 1`
+  - `sonic_vlan_member_info{vlan="Vlan1000",member="Ethernet0",tagging_mode="untagged"} 1`
+  - Query: `sonic_vlan_members`
+
+- **LAG collector** - PortChannel status and member state
+  - `sonic_lag_oper_status{lag="PortChannel1"} 1`
+  - `sonic_lag_member_status{lag="PortChannel1",member="Ethernet24"} 1`
+  - Query: `sonic_lag_oper_status == 0`
+
+- **FDB collector** - MAC learning scale and distribution
+  - `sonic_fdb_entries 1331`
+  - `sonic_fdb_entries_by_port{port="Ethernet88"} 214`
+  - Query: `topk(10, sonic_fdb_entries_by_port)`
+
+- **node_exporter collectors** - host CPU, memory, filesystem
+  - `node_cpu_seconds_total{cpu="0",mode="idle"} 5.93e+06`
+  - `node_memory_MemAvailable_bytes 1.24e+10`
+  - Query: `100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`
+
 # Development
 
 1. Development environment is based on docker-compose. To start it run:
