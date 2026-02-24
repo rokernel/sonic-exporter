@@ -99,8 +99,9 @@
     },
     "CHASSIS_INFO|chassis 1": {
       "psu_num": "2",
-      "serial": "123456",
-      "model": "006Y6V"
+      "serial": "SN-TEST-0001",
+      "model": "Model-X",
+      "revision": "A01"
     }
   }
 }

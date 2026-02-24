@@ -1,6 +1,11 @@
 {
   "id": "CONFIG_DB",
   "data": {
+    "DEVICE_METADATA|localhost": {
+      "hostname": "switch01.example.net",
+      "hwsku": "Example-SKU-48X",
+      "platform": "x86_64-vendor_switch-r0"
+    },
     "PORT|Ethernet0": {
       "admin_status": "up",
       "alias": "twentyfiveGigE1",

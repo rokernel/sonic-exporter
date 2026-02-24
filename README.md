@@ -11,6 +11,7 @@ Currently supported collectors:
 - [VLAN collector](internal/collector/vlan_collector.go): collects VLAN and VLAN member state from SONiC Redis.
 - [LAG collector](internal/collector/lag_collector.go): collects PortChannel and member state from SONiC Redis.
 - [FDB collector](internal/collector/fdb_collector.go): collects FDB summary metrics from SONiC ASIC DB.
+- [System collector](internal/collector/system_collector.go): collects switch identity, software metadata, and uptime using read-only sources.
 
 # Usage
 
@@ -52,6 +53,16 @@ Environment variables:
 - `FDB_MAX_ENTRIES` - maximum number of ASIC FDB entries processed per refresh. Default: `50000`.
 - `FDB_MAX_PORTS` - maximum number of per-port FDB series exported. Default: `1024`.
 - `FDB_MAX_VLANS` - maximum number of per-VLAN FDB series exported. Default: `4096`.
+- `SYSTEM_ENABLED` - enable system metadata collector. Default: `true`.
+- `SYSTEM_REFRESH_INTERVAL` - system metadata cache refresh interval. Default: `60s`.
+- `SYSTEM_TIMEOUT` - timeout for one system metadata refresh cycle. Default: `4s`.
+- `SYSTEM_COMMAND_ENABLED` - allow read-only command fallbacks (`show platform summary`, `show version`, `show platform syseeprom`). Default: `true`.
+- `SYSTEM_COMMAND_TIMEOUT` - timeout for one allowed command execution. Default: `2s`.
+- `SYSTEM_COMMAND_MAX_OUTPUT_BYTES` - max output bytes read from one command. Default: `262144`.
+- `SYSTEM_VERSION_FILE` - path to SONiC version metadata file. Default: `/etc/sonic/sonic_version.yml`.
+- `SYSTEM_MACHINE_CONF_FILE` - path to machine config file. Default: `/host/machine.conf`.
+- `SYSTEM_HOSTNAME_FILE` - path to hostname file. Default: `/etc/hostname`.
+- `SYSTEM_UPTIME_FILE` - path to uptime file. Default: `/proc/uptime`.
 
 ## Validated Platforms
 
@@ -108,6 +119,11 @@ These examples are synthetic and anonymized. Use them as query patterns. Labels 
   - `sonic_fdb_entries 1331`
   - `sonic_fdb_entries_by_port{port="Ethernet88"} 214`
   - Query: `topk(10, sonic_fdb_entries_by_port)`
+
+- **System collector** - switch identity and software metadata
+  - `sonic_system_identity_info{hostname="switch01.example.net",platform="x86_64-vendor_switch-r0",hwsku="Example-SKU",asic="broadcom",asic_count="1",serial="ABC123456",model="Model-X",revision="A01"} 1`
+  - `sonic_system_software_info{sonic_version="SONiC.202012.example",debian_version="10.13",kernel_version="4.19.0-12-2-amd64",build_commit="193959ba2"} 1`
+  - Query: `sonic_system_uptime_seconds`
 
 - **node_exporter collectors** - host CPU, memory, filesystem
   - `node_cpu_seconds_total{cpu="0",mode="idle"} 5.93e+06`

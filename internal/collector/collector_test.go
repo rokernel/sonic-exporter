@@ -81,6 +81,12 @@ func TestMain(m *testing.M) {
 	os.Setenv("VLAN_ENABLED", "true")
 	os.Setenv("LAG_ENABLED", "true")
 	os.Setenv("FDB_ENABLED", "true")
+	os.Setenv("SYSTEM_ENABLED", "true")
+	os.Setenv("SYSTEM_COMMAND_ENABLED", "false")
+	os.Setenv("SYSTEM_VERSION_FILE", "../../fixtures/test/system_sonic_version.yml")
+	os.Setenv("SYSTEM_MACHINE_CONF_FILE", "../../fixtures/test/system_machine.conf")
+	os.Setenv("SYSTEM_HOSTNAME_FILE", "../../fixtures/test/system_hostname")
+	os.Setenv("SYSTEM_UPTIME_FILE", "../../fixtures/test/system_uptime")
 	err = populateRedisData()
 	if err != nil {
 		slog.Error("failed to populate redis data", "error", err)
@@ -96,6 +102,12 @@ func TestMain(m *testing.M) {
 	os.Unsetenv("VLAN_ENABLED")
 	os.Unsetenv("LAG_ENABLED")
 	os.Unsetenv("FDB_ENABLED")
+	os.Unsetenv("SYSTEM_ENABLED")
+	os.Unsetenv("SYSTEM_COMMAND_ENABLED")
+	os.Unsetenv("SYSTEM_VERSION_FILE")
+	os.Unsetenv("SYSTEM_MACHINE_CONF_FILE")
+	os.Unsetenv("SYSTEM_HOSTNAME_FILE")
+	os.Unsetenv("SYSTEM_UPTIME_FILE")
 	os.Exit(exitCode)
 }
 
@@ -469,6 +481,64 @@ func TestFdbCollector(t *testing.T) {
 	`
 
 	if err := testutil.CollectAndCompare(fdbCollector, strings.NewReader(statusMetadata+statusExpected), "sonic_fdb_entries_skipped", "sonic_fdb_entries_truncated"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+}
+
+func TestSystemCollector(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	systemCollector := NewSystemCollector(logger)
+
+	problems, err := testutil.CollectAndLint(systemCollector)
+	if err != nil {
+		t.Error("metric lint completed with errors")
+	}
+
+	for _, problem := range problems {
+		t.Errorf("metric %v has a problem: %v", problem.Metric, problem.Text)
+	}
+
+	identityMetadata := `
+		# HELP sonic_system_identity_info Switch identity metadata, value is always 1
+		# TYPE sonic_system_identity_info gauge
+	`
+
+	identityExpected := `
+		sonic_system_identity_info{asic="broadcom",asic_count="1",hostname="switch01.example.net",hwsku="Example-SKU-48X",model="Model-X",platform="x86_64-vendor_switch-r0",revision="A01",serial="SN-TEST-0001"} 1
+	`
+
+	if err := testutil.CollectAndCompare(systemCollector, strings.NewReader(identityMetadata+identityExpected), "sonic_system_identity_info"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+
+	softwareMetadata := `
+		# HELP sonic_system_software_info Switch software metadata, value is always 1
+		# TYPE sonic_system_software_info gauge
+	`
+
+	softwareExpected := `
+		sonic_system_software_info{branch="test-branch",build_commit="abcdef123",build_date="Tue Jan 02 12:34:56 UTC 2024",built_by="ubuntu@sonic-exporter.test",debian_version="10.13",kernel_version="4.19.0-12-2-amd64",release="test-release",sonic_os_version="10",sonic_version="SONiC.SONIC.202012.test"} 1
+	`
+
+	if err := testutil.CollectAndCompare(systemCollector, strings.NewReader(softwareMetadata+softwareExpected), "sonic_system_software_info"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+
+	statusMetadata := `
+		# HELP sonic_system_collector_success Whether system collector succeeded
+		# TYPE sonic_system_collector_success gauge
+		# HELP sonic_system_uptime_seconds Switch uptime in seconds
+		# TYPE sonic_system_uptime_seconds gauge
+	`
+
+	statusExpected := `
+		sonic_system_collector_success 1
+		sonic_system_uptime_seconds 12345
+	`
+
+	if err := testutil.CollectAndCompare(systemCollector, strings.NewReader(statusMetadata+statusExpected), "sonic_system_collector_success", "sonic_system_uptime_seconds"); err != nil {
 		t.Errorf("unexpected collecting result:\n%s", err)
 	}
 }

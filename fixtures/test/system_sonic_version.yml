@@ -1,0 +1,11 @@
+build_version: SONiC.SONIC.202012.test
+debian_version: '10.13'
+kernel_version: '4.19.0-12-2-amd64'
+asic_type: broadcom
+asic_count: '1'
+commit_id: 'abcdef123'
+branch: 'test-branch'
+release: 'test-release'
+build_date: Tue Jan 02 12:34:56 UTC 2024
+built_by: ubuntu@sonic-exporter.test
+sonic_os_version: '10'
