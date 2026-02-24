@@ -60,6 +60,7 @@ func main() {
 	lldpCollector := collector.NewLldpCollector(logger)
 	vlanCollector := collector.NewVlanCollector(logger)
 	lagCollector := collector.NewLagCollector(logger)
+	fdbCollector := collector.NewFdbCollector(logger)
 	prometheus.MustRegister(interfaceCollector)
 	prometheus.MustRegister(hwCollector)
 	prometheus.MustRegister(crmCollector)
@@ -72,6 +73,9 @@ func main() {
 	}
 	if lagCollector.IsEnabled() {
 		prometheus.MustRegister(lagCollector)
+	}
+	if fdbCollector.IsEnabled() {
+		prometheus.MustRegister(fdbCollector)
 	}
 
 	// Node exporter collectors

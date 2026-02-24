@@ -10,6 +10,7 @@ Currently supported collectors:
 - [LLDP collector](internal/collector/lldp_collector.go): collects LLDP neighbor information from SONiC Redis.
 - [VLAN collector](internal/collector/vlan_collector.go): collects VLAN and VLAN member state from SONiC Redis.
 - [LAG collector](internal/collector/lag_collector.go): collects PortChannel and member state from SONiC Redis.
+- [FDB collector](internal/collector/fdb_collector.go): collects FDB summary metrics from SONiC ASIC DB.
 
 # Usage
 
@@ -45,6 +46,12 @@ Environment variables:
 - `LAG_TIMEOUT` - timeout for one LAG refresh cycle. Default: `2s`.
 - `LAG_MAX_LAGS` - maximum number of LAGs exported per refresh. Default: `512`.
 - `LAG_MAX_MEMBERS` - maximum number of LAG members exported per refresh. Default: `4096`.
+- `FDB_ENABLED` - enable FDB collector. Default: `false`.
+- `FDB_REFRESH_INTERVAL` - FDB cache refresh interval. Default: `60s`.
+- `FDB_TIMEOUT` - timeout for one FDB refresh cycle. Default: `2s`.
+- `FDB_MAX_ENTRIES` - maximum number of ASIC FDB entries processed per refresh. Default: `50000`.
+- `FDB_MAX_PORTS` - maximum number of per-port FDB series exported. Default: `1024`.
+- `FDB_MAX_VLANS` - maximum number of per-VLAN FDB series exported. Default: `4096`.
 
 ## Validated Platforms
 

@@ -27,6 +27,7 @@ func populateRedisData() error {
 		"../../fixtures/test/counters_db_data.json",
 		"../../fixtures/test/config_db_data.json",
 		"../../fixtures/test/appl_db_data.json",
+		"../../fixtures/test/asic_db_data.json",
 		"../../fixtures/test/state_db_data.json",
 	}
 
@@ -79,6 +80,7 @@ func TestMain(m *testing.M) {
 	os.Setenv("LLDP_INCLUDE_MGMT", "true")
 	os.Setenv("VLAN_ENABLED", "true")
 	os.Setenv("LAG_ENABLED", "true")
+	os.Setenv("FDB_ENABLED", "true")
 	err = populateRedisData()
 	if err != nil {
 		slog.Error("failed to populate redis data", "error", err)
@@ -93,6 +95,7 @@ func TestMain(m *testing.M) {
 	os.Unsetenv("LLDP_INCLUDE_MGMT")
 	os.Unsetenv("VLAN_ENABLED")
 	os.Unsetenv("LAG_ENABLED")
+	os.Unsetenv("FDB_ENABLED")
 	os.Exit(exitCode)
 }
 
@@ -372,6 +375,100 @@ func TestLagCollector(t *testing.T) {
 	`
 
 	if err := testutil.CollectAndCompare(lagCollector, strings.NewReader(memberMetadata+memberExpected), "sonic_lag_member_status"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+}
+
+func TestFdbCollector(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	fdbCollector := NewFdbCollector(logger)
+
+	problems, err := testutil.CollectAndLint(fdbCollector)
+	if err != nil {
+		t.Error("metric lint completed with errors")
+	}
+
+	for _, problem := range problems {
+		t.Errorf("metric %v has a problem: %v", problem.Metric, problem.Text)
+	}
+
+	metadata := `
+		# HELP sonic_fdb_collector_success Whether FDB collector succeeded
+		# TYPE sonic_fdb_collector_success gauge
+		# HELP sonic_fdb_entries Number of FDB entries
+		# TYPE sonic_fdb_entries gauge
+		# HELP sonic_fdb_entries_unknown_vlan Number of FDB entries with unknown VLAN mapping
+		# TYPE sonic_fdb_entries_unknown_vlan gauge
+	`
+
+	expected := `
+		sonic_fdb_collector_success 1
+		sonic_fdb_entries 4
+		sonic_fdb_entries_unknown_vlan 1
+	`
+
+	if err := testutil.CollectAndCompare(fdbCollector, strings.NewReader(metadata+expected), "sonic_fdb_collector_success", "sonic_fdb_entries", "sonic_fdb_entries_unknown_vlan"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+
+	portMetadata := `
+		# HELP sonic_fdb_entries_by_port Number of FDB entries by port
+		# TYPE sonic_fdb_entries_by_port gauge
+	`
+
+	portExpected := `
+		sonic_fdb_entries_by_port{port="Ethernet0"} 2
+		sonic_fdb_entries_by_port{port="Ethernet39"} 2
+	`
+
+	if err := testutil.CollectAndCompare(fdbCollector, strings.NewReader(portMetadata+portExpected), "sonic_fdb_entries_by_port"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+
+	vlanMetadata := `
+		# HELP sonic_fdb_entries_by_vlan Number of FDB entries by VLAN
+		# TYPE sonic_fdb_entries_by_vlan gauge
+	`
+
+	vlanExpected := `
+		sonic_fdb_entries_by_vlan{vlan="1000"} 2
+		sonic_fdb_entries_by_vlan{vlan="2000"} 1
+		sonic_fdb_entries_by_vlan{vlan="unknown"} 1
+	`
+
+	if err := testutil.CollectAndCompare(fdbCollector, strings.NewReader(vlanMetadata+vlanExpected), "sonic_fdb_entries_by_vlan"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+
+	typeMetadata := `
+		# HELP sonic_fdb_entries_by_type Number of FDB entries by entry type
+		# TYPE sonic_fdb_entries_by_type gauge
+	`
+
+	typeExpected := `
+		sonic_fdb_entries_by_type{entry_type="dynamic"} 3
+		sonic_fdb_entries_by_type{entry_type="static"} 1
+	`
+
+	if err := testutil.CollectAndCompare(fdbCollector, strings.NewReader(typeMetadata+typeExpected), "sonic_fdb_entries_by_type"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+
+	statusMetadata := `
+		# HELP sonic_fdb_entries_skipped Number of FDB entries skipped during latest refresh
+		# TYPE sonic_fdb_entries_skipped gauge
+		# HELP sonic_fdb_entries_truncated Whether FDB collection hit max entries limit (1=yes, 0=no)
+		# TYPE sonic_fdb_entries_truncated gauge
+	`
+
+	statusExpected := `
+		sonic_fdb_entries_skipped 1
+		sonic_fdb_entries_truncated 0
+	`
+
+	if err := testutil.CollectAndCompare(fdbCollector, strings.NewReader(statusMetadata+statusExpected), "sonic_fdb_entries_skipped", "sonic_fdb_entries_truncated"); err != nil {
 		t.Errorf("unexpected collecting result:\n%s", err)
 	}
 }

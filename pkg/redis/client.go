@@ -19,6 +19,8 @@ func RedisDbId(name string) (int, bool) {
 		return 0, true
 	case "COUNTERS_DB":
 		return 2, true
+	case "ASIC_DB":
+		return 1, true
 	case "CONFIG_DB":
 		return 4, true
 	case "STATE_DB":
