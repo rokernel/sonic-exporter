@@ -40,13 +40,17 @@
     "LLDP_ENTRY_TABLE:Ethernet88": {
       "lldp_rem_chassis_id": "74:86:e2:6d:df:a5",
       "lldp_rem_man_addr": "192.168.240.123",
+      "lldp_rem_port_desc": "Ethernet88",
       "lldp_rem_port_id": "hundredGigE1/23",
+      "lldp_rem_port_id_subtype": "7",
       "lldp_rem_sys_name": "net-tor-lab001.lau1"
     },
     "LLDP_ENTRY_TABLE:eth0": {
       "lldp_rem_chassis_id": "00:11:22:33:44:55",
       "lldp_rem_man_addr": "192.168.240.1",
-      "lldp_rem_port_id": "mgmt0",
+      "lldp_rem_port_desc": "ge-0/0/15.0",
+      "lldp_rem_port_id": "535",
+      "lldp_rem_port_id_subtype": "7",
       "lldp_rem_sys_name": "oob-switch01"
     },
     "LLDP_ENTRY_TABLE:Ethernet0": {

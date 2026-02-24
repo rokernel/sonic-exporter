@@ -275,8 +275,8 @@ func TestLldpCollector(t *testing.T) {
 	`
 
 	neighborExpected := `
-		sonic_lldp_neighbor_info{local_interface="Ethernet88",local_role="frontpanel",remote_chassis_id="74:86:e2:6d:df:a5",remote_mgmt_ip="192.168.240.123",remote_port_id="hundredGigE1/23",remote_system_name="net-tor-lab001.lau1"} 1
-		sonic_lldp_neighbor_info{local_interface="eth0",local_role="management",remote_chassis_id="00:11:22:33:44:55",remote_mgmt_ip="192.168.240.1",remote_port_id="mgmt0",remote_system_name="oob-switch01"} 1
+		sonic_lldp_neighbor_info{local_interface="Ethernet88",local_role="frontpanel",remote_chassis_id="74:86:e2:6d:df:a5",remote_mgmt_ip="192.168.240.123",remote_port_desc="Ethernet88",remote_port_display="Ethernet88",remote_port_id="hundredGigE1/23",remote_port_id_subtype="7",remote_system_name="net-tor-lab001.lau1"} 1
+		sonic_lldp_neighbor_info{local_interface="eth0",local_role="management",remote_chassis_id="00:11:22:33:44:55",remote_mgmt_ip="192.168.240.1",remote_port_desc="ge-0/0/15.0",remote_port_display="ge-0/0/15.0",remote_port_id="535",remote_port_id_subtype="7",remote_system_name="oob-switch01"} 1
 	`
 
 	if err := testutil.CollectAndCompare(lldpCollector, strings.NewReader(neighborMetadata+neighborExpected), "sonic_lldp_neighbor_info"); err != nil {
