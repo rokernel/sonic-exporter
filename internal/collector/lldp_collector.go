@@ -52,7 +52,7 @@ func NewLldpCollector(logger *slog.Logger) *lldpCollector {
 
 	collector := &lldpCollector{
 		lldpNeighborInfo: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "neighbor_info"),
-			"Non-numeric data about LLDP neighbor, value is always 1", []string{"local_interface", "local_role", "remote_system_name", "remote_port_id", "remote_chassis_id", "remote_mgmt_ip"}, nil),
+			"Non-numeric data about LLDP neighbor, value is always 1", []string{"local_interface", "local_role", "remote_system_name", "remote_port_id", "remote_port_desc", "remote_port_id_subtype", "remote_port_display", "remote_chassis_id", "remote_mgmt_ip"}, nil),
 		lldpNeighbors: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "neighbors"),
 			"Number of LLDP neighbors exported", nil, nil),
 		scrapeDuration: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "scrape_duration_seconds"),
@@ -202,10 +202,13 @@ func (collector *lldpCollector) scrapeMetrics(ctx context.Context) ([]prometheus
 
 		remoteSystemName := lldpData["lldp_rem_sys_name"]
 		remotePortID := lldpData["lldp_rem_port_id"]
+		remotePortDesc := lldpData["lldp_rem_port_desc"]
+		remotePortIDSubtype := lldpData["lldp_rem_port_id_subtype"]
+		remotePortDisplay := resolvedRemotePortDisplay(remotePortID, remotePortDesc, remotePortIDSubtype)
 		remoteChassisID := lldpData["lldp_rem_chassis_id"]
 		remoteMgmtIP := lldpData["lldp_rem_man_addr"]
 
-		if remoteSystemName == "" && remotePortID == "" && remoteChassisID == "" && remoteMgmtIP == "" {
+		if remoteSystemName == "" && remotePortID == "" && remotePortDesc == "" && remoteChassisID == "" && remoteMgmtIP == "" {
 			skippedEntries++
 			continue
 		}
@@ -223,6 +226,9 @@ func (collector *lldpCollector) scrapeMetrics(ctx context.Context) ([]prometheus
 			localRole,
 			remoteSystemName,
 			remotePortID,
+			remotePortDesc,
+			remotePortIDSubtype,
+			remotePortDisplay,
 			remoteChassisID,
 			remoteMgmtIP,
 		))
@@ -296,4 +302,18 @@ func parseIntEnv(logger *slog.Logger, key string, defaultValue int) int {
 	}
 
 	return parsedValue
+}
+
+func resolvedRemotePortDisplay(remotePortID, remotePortDesc, remotePortIDSubtype string) string {
+	subtype := strings.ToLower(strings.TrimSpace(remotePortIDSubtype))
+
+	if remotePortDesc != "" && (subtype == "7" || subtype == "local" || subtype == "3" || subtype == "mac") {
+		return remotePortDesc
+	}
+
+	if remotePortID != "" {
+		return remotePortID
+	}
+
+	return remotePortDesc
 }
