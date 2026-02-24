@@ -468,17 +468,17 @@ func (collector *systemCollector) finalizeField(fieldName, value string) string 
 func (collector *systemCollector) setIfEmpty(fieldName, source string, target *string, value string) {
 	normalized := normalizeSystemValue(value)
 	if normalized == "" {
-		collector.logger.Debug("System metadata field missing in source", "field", fieldName, "source", source, "expected", true)
+		collector.logger.Debug("System metadata field missing in source", "field", fieldName, "data_source", source, "expected", true)
 		return
 	}
 
 	if *target == "" {
 		*target = normalized
-		collector.logger.Debug("System metadata field populated", "field", fieldName, "source", source)
+		collector.logger.Debug("System metadata field populated", "field", fieldName, "data_source", source)
 		return
 	}
 
-	collector.logger.Debug("System metadata field already populated, fallback ignored", "field", fieldName, "source", source)
+	collector.logger.Debug("System metadata field already populated, fallback ignored", "field", fieldName, "data_source", source)
 }
 
 func (collector *systemCollector) runAllowedCommand(parentCtx context.Context, args []string) (string, error) {
@@ -518,7 +518,7 @@ func (collector *systemCollector) runAllowedCommand(parentCtx context.Context, a
 
 func loadSystemCollectorConfig(logger *slog.Logger) systemCollectorConfig {
 	return systemCollectorConfig{
-		enabled:               parseBoolEnv(logger, "SYSTEM_ENABLED", true),
+		enabled:               parseBoolEnv(logger, "SYSTEM_ENABLED", false),
 		refreshInterval:       parseDurationEnv(logger, "SYSTEM_REFRESH_INTERVAL", 60*time.Second),
 		timeout:               parseDurationEnv(logger, "SYSTEM_TIMEOUT", 4*time.Second),
 		commandEnabled:        parseBoolEnv(logger, "SYSTEM_COMMAND_ENABLED", true),
