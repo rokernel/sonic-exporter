@@ -19,7 +19,6 @@ import (
 func main() {
 	// setup node exporter collectors through global kingpin flags
 	_, err := kingpin.CommandLine.Parse([]string{
-		"--collector.disable-defaults",
 		"--collector.loadavg",
 		"--collector.cpu",
 		"--collector.diskstats",
