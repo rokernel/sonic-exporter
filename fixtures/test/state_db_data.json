@@ -102,6 +102,36 @@
       "serial": "SN-TEST-0001",
       "model": "Model-X",
       "revision": "A01"
+    },
+    "DOCKER_STATS|0001": {
+      "NAME": "swss",
+      "CPU%": "1.5",
+      "MEM_BYTES": "104857600",
+      "MEM_LIMIT_BYTES": "2147483648",
+      "MEM%": "4.88",
+      "NET_IN_BYTES": "123456",
+      "NET_OUT_BYTES": "654321",
+      "BLOCK_IN_BYTES": "1024",
+      "BLOCK_OUT_BYTES": "2048",
+      "PIDS": "42"
+    },
+    "DOCKER_STATS|0002": {
+      "NAME": "syncd",
+      "CPU%": "0.5",
+      "MEM_BYTES": "209715200",
+      "MEM_LIMIT_BYTES": "2147483648",
+      "MEM%": "9.76",
+      "NET_IN_BYTES": "2222",
+      "NET_OUT_BYTES": "3333",
+      "BLOCK_IN_BYTES": "4444",
+      "BLOCK_OUT_BYTES": "5555",
+      "PIDS": "17"
+    },
+    "DOCKER_STATS|0003": {
+      "CPU%": "0.1"
+    },
+    "DOCKER_STATS|LastUpdateTime": {
+      "lastupdate": "2020-01-01 00:00:00.000000"
     }
   }
 }
