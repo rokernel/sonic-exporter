@@ -256,6 +256,179 @@ Notes:
 - `./scripts/build.sh` produces a static Linux binary (`CGO_ENABLED=0`).
 - If you add keys to Redis fixtures manually, persist them with `SAVE` in Redis.
 
+## Run with systemd
+
+This section shows a production-friendly way to run `sonic-exporter` as a Linux service using `systemd`, with collector toggles set by environment variables.
+
+### 1) Create a dedicated service user
+
+```bash
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin sonic-exporter
+```
+
+If your distro uses `/sbin/nologin`, use that path instead.
+
+### 2) Install the binary
+
+```bash
+sudo install -m 0755 ./sonic-exporter /usr/local/bin/sonic-exporter
+```
+
+### 3) Create an environment file
+
+Use an env file so collector toggles and Redis settings are easy to manage without editing the unit file.
+
+```bash
+sudo install -d -m 0755 /etc/sonic-exporter
+sudo tee /etc/sonic-exporter/sonic-exporter.env >/dev/null <<'EOF'
+REDIS_ADDRESS=localhost:6379
+REDIS_PASSWORD=
+REDIS_NETWORK=tcp
+
+LLDP_ENABLED=true
+VLAN_ENABLED=true
+LAG_ENABLED=true
+FDB_ENABLED=false
+SYSTEM_ENABLED=false
+DOCKER_ENABLED=false
+EOF
+```
+
+### 4) Create the systemd unit
+
+Create `/etc/systemd/system/sonic-exporter.service`:
+
+```ini
+[Unit]
+Description=SONiC Prometheus Exporter
+Documentation=https://github.com/rokernel/sonic-exporter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=sonic-exporter
+Group=sonic-exporter
+
+EnvironmentFile=/etc/sonic-exporter/sonic-exporter.env
+ExecStart=/usr/local/bin/sonic-exporter
+Restart=on-failure
+RestartSec=5s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+
+# Hardening (safe defaults for this exporter)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+
+# Allow read access to host and SONiC files used by collectors
+ReadOnlyPaths=/etc/sonic /host /proc
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 5) Enable and start
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now sonic-exporter
+sudo systemctl status sonic-exporter
+```
+
+### 6) Validate service and metrics
+
+```bash
+sudo systemctl show sonic-exporter --property=Environment
+curl -s http://127.0.0.1:9101/metrics | head
+```
+
+To confirm a specific collector is enabled/disabled, look for its metric prefix:
+- LLDP: `sonic_lldp_`
+- VLAN: `sonic_vlan_`
+- LAG: `sonic_lag_`
+- FDB: `sonic_fdb_`
+- System: `sonic_system_`
+- Docker: `sonic_docker_`
+
+### 7) Change collector settings safely
+
+Edit env file only, then restart:
+
+```bash
+sudoedit /etc/sonic-exporter/sonic-exporter.env
+sudo systemctl restart sonic-exporter
+```
+
+### 8) Prefer overrides for local customization
+
+If the unit is package-managed in future, do not edit it directly. Use an override:
+
+```bash
+sudo systemctl edit sonic-exporter
+```
+
+Example override:
+
+```ini
+[Service]
+Environment="FDB_ENABLED=true"
+Environment="SYSTEM_ENABLED=true"
+```
+
+Then:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart sonic-exporter
+```
+
+### Testing safely without breaking production
+
+Validate unit syntax first (no restart):
+
+```bash
+sudo systemd-analyze verify /etc/systemd/system/sonic-exporter.service
+```
+
+Run a **canary** service on a different port:
+
+1. Copy unit to `sonic-exporter-canary.service`
+2. Change `ExecStart=/usr/local/bin/sonic-exporter --web.listen-address=:19101`
+3. Optionally use a canary env file
+4. Start only canary:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl start sonic-exporter-canary
+   sudo systemctl status sonic-exporter-canary
+   ```
+- Verify:
+   - `curl -sf http://127.0.0.1:19101/metrics >/dev/null && echo OK`
+   - `journalctl -u sonic-exporter-canary -n 100 --no-pager`
+- Clean rollback:
+   ```bash
+   sudo systemctl stop sonic-exporter-canary
+   sudo systemctl disable sonic-exporter-canary
+   rm /etc/systemd/system/sonic-exporter-canary.service
+   ```
+
+### Notes
+
+- SONiC collector toggles are controlled by environment variables, not dedicated CLI flags.
+- Keep `SYSTEM_ENABLED` and `DOCKER_ENABLED` off unless you need them.
+- If hardening blocks file access on your distro, relax only the minimum setting and document the reason.
 ## Upstream credits and acknowledgments
 
 This project builds on work from upstream open source projects. Thank you to the maintainers and contributors.
