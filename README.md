@@ -12,6 +12,7 @@ Currently supported collectors:
 - [LAG collector](internal/collector/lag_collector.go): collects PortChannel and member state from SONiC Redis.
 - [FDB collector](internal/collector/fdb_collector.go): collects FDB summary metrics from SONiC ASIC DB.
 - [System collector](internal/collector/system_collector.go): experimental collector for switch identity, software metadata, and uptime using read-only sources (disabled by default).
+- [Docker collector](internal/collector/docker_collector.go): experimental collector for container runtime metrics from `STATE_DB` `DOCKER_STATS` (disabled by default).
 
 # Usage
 
@@ -63,6 +64,11 @@ Environment variables:
 - `SYSTEM_MACHINE_CONF_FILE` - path to machine config file. Default: `/host/machine.conf`.
 - `SYSTEM_HOSTNAME_FILE` - path to hostname file. Default: `/etc/hostname`.
 - `SYSTEM_UPTIME_FILE` - path to uptime file. Default: `/proc/uptime`.
+- `DOCKER_ENABLED` - enable docker collector (experimental). Default: `false`.
+- `DOCKER_REFRESH_INTERVAL` - docker cache refresh interval. Default: `60s`.
+- `DOCKER_TIMEOUT` - timeout for one docker refresh cycle. Default: `2s`.
+- `DOCKER_MAX_CONTAINERS` - maximum number of container entries exported per refresh. Default: `128`.
+- `DOCKER_SOURCE_STALE_THRESHOLD` - source age threshold after which docker source is marked stale. Default: `5m`.
 
 ## System Collector (Experimental)
 
@@ -102,6 +108,32 @@ Debug mode behavior (`--log.level=debug`):
 - Logs when fields are missing but expected.
 - Logs which data source populated each field.
 - Logs when fallback sources are skipped because a higher-priority source already set the field.
+
+## Docker Collector (Experimental)
+
+The `docker_collector` is currently experimental and is disabled by default for stability.
+
+To enable it:
+```bash
+$ DOCKER_ENABLED=true ./sonic-exporter
+```
+
+What this collector exports:
+
+- `sonic_docker_container_info{container="..."}` - container identity metric (value always `1`).
+- `sonic_docker_container_cpu_percent`, `sonic_docker_container_memory_usage_bytes`, `sonic_docker_container_memory_limit_bytes`, `sonic_docker_container_memory_percent`.
+- `sonic_docker_container_network_receive_bytes_total`, `sonic_docker_container_network_transmit_bytes_total`.
+- `sonic_docker_container_block_read_bytes_total`, `sonic_docker_container_block_write_bytes_total`, `sonic_docker_container_pids`.
+- `sonic_docker_containers`, `sonic_docker_entries_skipped`, `sonic_docker_source_stale`, `sonic_docker_source_age_seconds`, `sonic_docker_source_last_update_timestamp_seconds`.
+- `sonic_docker_collector_success`, `sonic_docker_scrape_duration_seconds`, `sonic_docker_cache_age_seconds`.
+
+Data source and safety behavior:
+
+- Reads only from `STATE_DB` keys `DOCKER_STATS|*` and `DOCKER_STATS|LastUpdateTime`.
+- No Docker socket access, no command execution, no writes.
+- Export uses `container` label only to keep cardinality controlled.
+- Refresh is cached and capped by `DOCKER_MAX_CONTAINERS`.
+- Source freshness is tracked with `DOCKER_SOURCE_STALE_THRESHOLD`.
 
 ## Validated Platforms
 
@@ -163,6 +195,11 @@ These examples are synthetic and anonymized. Use them as query patterns. Labels 
   - `sonic_system_identity_info{hostname="switch01.example.net",platform="x86_64-vendor_switch-r0",hwsku="Example-SKU",asic="broadcom",asic_count="1",serial="ABC123456",model="Model-X",revision="A01"} 1`
   - `sonic_system_software_info{sonic_version="SONiC.202012.example",debian_version="10.13",kernel_version="4.19.0-12-2-amd64",build_commit="193959ba2"} 1`
   - Query: `sonic_system_uptime_seconds`
+
+- **Docker collector (experimental, when enabled)** - container runtime metrics from SONiC `STATE_DB`
+  - `sonic_docker_container_cpu_percent{container="swss"} 1.5`
+  - `sonic_docker_container_memory_usage_bytes{container="syncd"} 2.09e+08`
+  - Query: `sonic_docker_source_stale == 1`
 
 - **node_exporter collectors** - host CPU, memory, filesystem
   - `node_cpu_seconds_total{cpu="0",mode="idle"} 5.93e+06`

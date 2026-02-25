@@ -82,6 +82,7 @@ func TestMain(m *testing.M) {
 	os.Setenv("LAG_ENABLED", "true")
 	os.Setenv("FDB_ENABLED", "true")
 	os.Setenv("SYSTEM_ENABLED", "true")
+	os.Setenv("DOCKER_ENABLED", "true")
 	os.Setenv("SYSTEM_COMMAND_ENABLED", "false")
 	os.Setenv("SYSTEM_VERSION_FILE", "../../fixtures/test/system_sonic_version.yml")
 	os.Setenv("SYSTEM_MACHINE_CONF_FILE", "../../fixtures/test/system_machine.conf")
@@ -103,6 +104,7 @@ func TestMain(m *testing.M) {
 	os.Unsetenv("LAG_ENABLED")
 	os.Unsetenv("FDB_ENABLED")
 	os.Unsetenv("SYSTEM_ENABLED")
+	os.Unsetenv("DOCKER_ENABLED")
 	os.Unsetenv("SYSTEM_COMMAND_ENABLED")
 	os.Unsetenv("SYSTEM_VERSION_FILE")
 	os.Unsetenv("SYSTEM_MACHINE_CONF_FILE")
@@ -539,6 +541,97 @@ func TestSystemCollector(t *testing.T) {
 	`
 
 	if err := testutil.CollectAndCompare(systemCollector, strings.NewReader(statusMetadata+statusExpected), "sonic_system_collector_success", "sonic_system_uptime_seconds"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+}
+
+func TestDockerCollector(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	dockerCollector := NewDockerCollector(logger)
+
+	problems, err := testutil.CollectAndLint(dockerCollector)
+	if err != nil {
+		t.Error("metric lint completed with errors")
+	}
+
+	for _, problem := range problems {
+		t.Errorf("metric %v has a problem: %v", problem.Metric, problem.Text)
+	}
+
+	statusMetadata := `
+		# HELP sonic_docker_collector_success Whether docker collector succeeded
+		# TYPE sonic_docker_collector_success gauge
+		# HELP sonic_docker_containers Number of containers with DOCKER_STATS entries
+		# TYPE sonic_docker_containers gauge
+		# HELP sonic_docker_entries_skipped Number of docker entries skipped during latest refresh
+		# TYPE sonic_docker_entries_skipped gauge
+		# HELP sonic_docker_source_stale Whether DOCKER_STATS source data is stale (1=yes, 0=no)
+		# TYPE sonic_docker_source_stale gauge
+	`
+
+	statusExpected := `
+		sonic_docker_collector_success 1
+		sonic_docker_containers 2
+		sonic_docker_entries_skipped 1
+		sonic_docker_source_stale 1
+	`
+
+	if err := testutil.CollectAndCompare(dockerCollector, strings.NewReader(statusMetadata+statusExpected), "sonic_docker_collector_success", "sonic_docker_containers", "sonic_docker_entries_skipped", "sonic_docker_source_stale"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+
+	containerMetadata := `
+		# HELP sonic_docker_container_info Container metadata from SONiC DOCKER_STATS, value is always 1
+		# TYPE sonic_docker_container_info gauge
+	`
+
+	containerExpected := `
+		sonic_docker_container_info{container="swss"} 1
+		sonic_docker_container_info{container="syncd"} 1
+	`
+
+	if err := testutil.CollectAndCompare(dockerCollector, strings.NewReader(containerMetadata+containerExpected), "sonic_docker_container_info"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+
+	cpuMetadata := `
+		# HELP sonic_docker_container_cpu_percent Container CPU usage percent
+		# TYPE sonic_docker_container_cpu_percent gauge
+	`
+
+	cpuExpected := `
+		sonic_docker_container_cpu_percent{container="swss"} 1.5
+		sonic_docker_container_cpu_percent{container="syncd"} 0.5
+	`
+
+	if err := testutil.CollectAndCompare(dockerCollector, strings.NewReader(cpuMetadata+cpuExpected), "sonic_docker_container_cpu_percent"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+}
+
+func TestDockerCollectorMaxContainers(t *testing.T) {
+	t.Setenv("DOCKER_MAX_CONTAINERS", "1")
+
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	dockerCollector := NewDockerCollector(logger)
+
+	metadata := `
+		# HELP sonic_docker_containers Number of containers with DOCKER_STATS entries
+		# TYPE sonic_docker_containers gauge
+		# HELP sonic_docker_entries_skipped Number of docker entries skipped during latest refresh
+		# TYPE sonic_docker_entries_skipped gauge
+	`
+
+	expected := `
+		sonic_docker_containers 1
+		sonic_docker_entries_skipped 2
+	`
+
+	if err := testutil.CollectAndCompare(dockerCollector, strings.NewReader(metadata+expected), "sonic_docker_containers", "sonic_docker_entries_skipped"); err != nil {
 		t.Errorf("unexpected collecting result:\n%s", err)
 	}
 }
