@@ -1,145 +1,239 @@
 # sonic-exporter
 
-Prometheus exporter for [SONiC](https://github.com/sonic-net/SONiC) NOS.
+Prometheus exporter for SONiC network switches.
 
-Currently supported collectors:
-- [HW collector](internal/collector/hw_collector.go): collects metrics about PSU and Fan operation
-- [Interface collector](internal/collector/interface_collector.go): collect metrics about interface operation and performance.
-- [CRM collector](internal/collector/crm_collector.go): collects Critial Resource Monitoring metrics.
-- [Queue collector](internal/collector/queue_collector.go): collects metrics about queues.
-- [LLDP collector](internal/collector/lldp_collector.go): collects LLDP neighbor information from SONiC Redis.
-- [VLAN collector](internal/collector/vlan_collector.go): collects VLAN and VLAN member state from SONiC Redis.
-- [LAG collector](internal/collector/lag_collector.go): collects PortChannel and member state from SONiC Redis.
-- [FDB collector](internal/collector/fdb_collector.go): collects FDB summary metrics from SONiC ASIC DB.
-- [System collector](internal/collector/system_collector.go): experimental collector for switch identity, software metadata, and uptime using read-only sources (disabled by default).
-- [Docker collector](internal/collector/docker_collector.go): experimental collector for container runtime metrics from `STATE_DB` `DOCKER_STATS` (disabled by default).
+This project collects switch telemetry from SONiC Redis databases and exposes it in Prometheus format. It also enables a curated subset of `node_exporter` host metrics, so you can monitor switch services and system health in one scrape target.
 
-# Usage
+## Why exporters matter
 
-1. Run binary 
-```bash
-$ ./sonic-exporter
+Exporters let you turn platform-specific telemetry into a standard metrics format:
+
+- Prometheus can scrape data from many systems in one consistent way.
+- You can build shared dashboards and alerts across vendors and platforms.
+- Metrics become queryable with one language (PromQL), which reduces operational friction.
+- You can correlate switch-level signals (interfaces, queues, FDB, LLDP) with host-level signals (CPU, memory, filesystem).
+
+For SONiC environments, this means less custom glue code and faster troubleshooting from a single monitoring stack.
+
+## What this project is for
+
+`sonic-exporter` is focused on production-friendly SONiC observability:
+
+- Reads from SONiC Redis and selected local read-only sources.
+- Keeps scrape latency stable with cached refresh loops per collector.
+- Enforces guardrails (timeouts, caps, bounded labels) to control cardinality and scrape cost.
+- Keeps experimental collectors opt-in.
+
+## Architecture
+
+### Runtime flow
+
+```mermaid
+flowchart LR
+    subgraph SONiC host
+        R[(SONiC Redis DBs)]
+        F[/Read-only files/]
+        C[[Allowlisted commands]]
+    end
+
+    subgraph sonic-exporter
+        M[cmd/sonic-exporter/main.go]
+        COL[Collectors\ninterface, hw, crm, queue, lldp, vlan, lag, fdb\nsystem*, docker*]
+        CACHE[(In-memory metric cache)]
+        NODE[node_exporter subset\nloadavg,cpu,diskstats,filesystem,meminfo,time,stat]
+    end
+
+    P[(Prometheus)]
+
+    R --> COL
+    F --> COL
+    C --> COL
+    COL --> CACHE
+    CACHE --> M
+    NODE --> M
+    M -->|/metrics| P
 ```
 
-2. You can verify that exporter is running by cURLing the `/metrics` endpoint. 
-```bash
-$ curl localhost:9101/metrics
+`*` Experimental collectors are disabled by default.
+
+### Repository structure
+
+```text
+sonic-exporter/
+├── cmd/sonic-exporter/      # bootstrap, collector registration, HTTP server
+├── internal/collector/      # SONiC collectors and collector tests
+├── pkg/redis/               # Redis access wrapper
+├── fixtures/test/           # test fixtures loaded into miniredis
+├── scripts/                 # static build and package helpers
+└── .github/workflows/       # CI test and release pipelines
 ```
 
-# Configuration
+For a deeper breakdown, see `docs/architecture.md`.
 
-Environment variables:
+## Collectors
 
-- `REDIS_ADDRESS` - redis connection string, if using unix socket set `REDIS_NETWORK` to `unix`. Default: `localhost:6379`.
-- `REDIS_PASSWORD` - password used when connecting to redis.
-- `REDIS_NETWORK` - redis network type, either tcp or unix. Default: `tcp`.
-- `LLDP_ENABLED` - enable LLDP collector. Default: `true`.
-- `LLDP_INCLUDE_MGMT` - include management interface LLDP entries (for example `eth0`). Default: `true`.
-- `LLDP_REFRESH_INTERVAL` - LLDP cache refresh interval. Default: `30s`.
-- `LLDP_TIMEOUT` - timeout for one LLDP refresh cycle. Default: `2s`.
-- `LLDP_MAX_NEIGHBORS` - maximum number of LLDP neighbors exported per refresh. Default: `512`.
-- `VLAN_ENABLED` - enable VLAN collector. Default: `true`.
-- `VLAN_REFRESH_INTERVAL` - VLAN cache refresh interval. Default: `30s`.
-- `VLAN_TIMEOUT` - timeout for one VLAN refresh cycle. Default: `2s`.
-- `VLAN_MAX_VLANS` - maximum number of VLANs exported per refresh. Default: `1024`.
-- `VLAN_MAX_MEMBERS` - maximum number of VLAN members exported per refresh. Default: `8192`.
-- `LAG_ENABLED` - enable LAG collector. Default: `true`.
-- `LAG_REFRESH_INTERVAL` - LAG cache refresh interval. Default: `30s`.
-- `LAG_TIMEOUT` - timeout for one LAG refresh cycle. Default: `2s`.
-- `LAG_MAX_LAGS` - maximum number of LAGs exported per refresh. Default: `512`.
-- `LAG_MAX_MEMBERS` - maximum number of LAG members exported per refresh. Default: `4096`.
-- `FDB_ENABLED` - enable FDB collector. Default: `false`.
-- `FDB_REFRESH_INTERVAL` - FDB cache refresh interval. Default: `60s`.
-- `FDB_TIMEOUT` - timeout for one FDB refresh cycle. Default: `2s`.
-- `FDB_MAX_ENTRIES` - maximum number of ASIC FDB entries processed per refresh. Default: `50000`.
-- `FDB_MAX_PORTS` - maximum number of per-port FDB series exported. Default: `1024`.
-- `FDB_MAX_VLANS` - maximum number of per-VLAN FDB series exported. Default: `4096`.
-- `SYSTEM_ENABLED` - enable system metadata collector (experimental). Default: `false`.
-- `SYSTEM_REFRESH_INTERVAL` - system metadata cache refresh interval. Default: `60s`.
-- `SYSTEM_TIMEOUT` - timeout for one system metadata refresh cycle. Default: `4s`.
-- `SYSTEM_COMMAND_ENABLED` - allow read-only command fallbacks (`show platform summary`, `show version`, `show platform syseeprom`). Default: `true`.
-- `SYSTEM_COMMAND_TIMEOUT` - timeout for one allowed command execution. Default: `2s`.
-- `SYSTEM_COMMAND_MAX_OUTPUT_BYTES` - max output bytes read from one command. Default: `262144`.
-- `SYSTEM_VERSION_FILE` - path to SONiC version metadata file. Default: `/etc/sonic/sonic_version.yml`.
-- `SYSTEM_MACHINE_CONF_FILE` - path to machine config file. Default: `/host/machine.conf`.
-- `SYSTEM_HOSTNAME_FILE` - path to hostname file. Default: `/etc/hostname`.
-- `SYSTEM_UPTIME_FILE` - path to uptime file. Default: `/proc/uptime`.
-- `DOCKER_ENABLED` - enable docker collector (experimental). Default: `false`.
-- `DOCKER_REFRESH_INTERVAL` - docker cache refresh interval. Default: `60s`.
-- `DOCKER_TIMEOUT` - timeout for one docker refresh cycle. Default: `2s`.
-- `DOCKER_MAX_CONTAINERS` - maximum number of container entries exported per refresh. Default: `128`.
-- `DOCKER_SOURCE_STALE_THRESHOLD` - source age threshold after which docker source is marked stale. Default: `5m`.
+| Collector | Purpose | Default |
+|---|---|---|
+| Interface | Interface operation and traffic metrics | Enabled |
+| HW | PSU and fan health metrics | Enabled |
+| CRM | Critical resource monitoring | Enabled |
+| Queue | Queue counters and watermarks | Enabled |
+| LLDP | LLDP neighbors from Redis | Enabled |
+| VLAN | VLAN and VLAN member state | Enabled |
+| LAG | PortChannel and member state | Enabled |
+| FDB | FDB summary from ASIC DB | Disabled (`FDB_ENABLED=false`) |
+| System (experimental) | Switch identity, software metadata, uptime | Disabled (`SYSTEM_ENABLED=false`) |
+| Docker (experimental) | Container runtime metrics from `STATE_DB` | Disabled (`DOCKER_ENABLED=false`) |
 
-## System Collector (Experimental)
+Collector implementations live in `internal/collector/*_collector.go`.
 
-The `system_collector` is currently experimental and is disabled by default for stability.
+## Quick start
 
-To enable it:
+### Run locally
+
 ```bash
-$ SYSTEM_ENABLED=true ./sonic-exporter
+./sonic-exporter
+curl localhost:9101/metrics
 ```
 
-What this collector exports:
+### Run dev environment
 
-- `sonic_system_identity_info` - hostname, platform, hwsku, asic, asic_count, serial, model, revision.
-- `sonic_system_software_info` - SONiC version, OS version, Debian, kernel, build metadata.
-- `sonic_system_uptime_seconds` - uptime in seconds.
-- `sonic_system_collector_success`, `sonic_system_scrape_duration_seconds`, `sonic_system_cache_age_seconds`.
-
-Data sources and fallback order:
-
-1. Redis first (`DEVICE_METADATA|localhost`, `CHASSIS_INFO|chassis 1`)
-2. Local read-only files (`/etc/sonic/sonic_version.yml`, `/host/machine.conf`, `/etc/hostname`, `/proc/uptime`)
-3. Optional read-only command fallback (if `SYSTEM_COMMAND_ENABLED=true`):
-   - `show platform summary --json`
-   - `show version`
-   - `show platform syseeprom`
-
-Read-only and safety behavior:
-
-- No Redis writes and no file writes.
-- Command execution is allowlisted.
-- Command timeout and output size limits are enforced.
-- Missing fields become `unknown` instead of failing scrapes.
-- Metadata refresh is cached, so `/metrics` stays responsive.
-
-Debug mode behavior (`--log.level=debug`):
-
-- Logs when fields are missing but expected.
-- Logs which data source populated each field.
-- Logs when fallback sources are skipped because a higher-priority source already set the field.
-
-## Docker Collector (Experimental)
-
-The `docker_collector` is currently experimental and is disabled by default for stability.
-
-To enable it:
 ```bash
-$ DOCKER_ENABLED=true ./sonic-exporter
+docker-compose up --build -d
+curl localhost:9101/metrics
 ```
 
-What this collector exports:
+## Configuration
 
-- `sonic_docker_container_info{container="..."}` - container identity metric (value always `1`).
-- `sonic_docker_container_cpu_percent`, `sonic_docker_container_memory_usage_bytes`, `sonic_docker_container_memory_limit_bytes`, `sonic_docker_container_memory_percent`.
-- `sonic_docker_container_network_receive_bytes_total`, `sonic_docker_container_network_transmit_bytes_total`.
-- `sonic_docker_container_block_read_bytes_total`, `sonic_docker_container_block_write_bytes_total`, `sonic_docker_container_pids`.
-- `sonic_docker_containers`, `sonic_docker_entries_skipped`, `sonic_docker_source_stale`, `sonic_docker_source_age_seconds`, `sonic_docker_source_last_update_timestamp_seconds`.
-- `sonic_docker_collector_success`, `sonic_docker_scrape_duration_seconds`, `sonic_docker_cache_age_seconds`.
+### Core settings
 
-Data source and safety behavior:
+| Variable | Description | Default |
+|---|---|---|
+| `REDIS_ADDRESS` | Redis address (`host:port` for TCP) | `localhost:6379` |
+| `REDIS_PASSWORD` | Password for Redis | empty |
+| `REDIS_NETWORK` | Redis network type (`tcp` or `unix`) | `tcp` |
 
-- Reads only from `STATE_DB` keys `DOCKER_STATS|*` and `DOCKER_STATS|LastUpdateTime`.
-- No Docker socket access, no command execution, no writes.
-- Export uses `container` label only to keep cardinality controlled.
-- Refresh is cached and capped by `DOCKER_MAX_CONTAINERS`.
-- Source freshness is tracked with `DOCKER_SOURCE_STALE_THRESHOLD`.
+### LLDP collector
 
-## Validated Platforms
+| Variable | Description | Default |
+|---|---|---|
+| `LLDP_ENABLED` | Enable LLDP collector | `true` |
+| `LLDP_INCLUDE_MGMT` | Include management interfaces like `eth0` | `true` |
+| `LLDP_REFRESH_INTERVAL` | Cache refresh interval | `30s` |
+| `LLDP_TIMEOUT` | Timeout for one refresh cycle | `2s` |
+| `LLDP_MAX_NEIGHBORS` | Max neighbors exported per refresh | `512` |
 
-The exporter has been validated on the following platforms:
+### VLAN collector
 
-These tests were done with SONiC Community versions, not SONiC Enterprise versions.
+| Variable | Description | Default |
+|---|---|---|
+| `VLAN_ENABLED` | Enable VLAN collector | `true` |
+| `VLAN_REFRESH_INTERVAL` | Cache refresh interval | `30s` |
+| `VLAN_TIMEOUT` | Timeout for one refresh cycle | `2s` |
+| `VLAN_MAX_VLANS` | Max VLANs exported per refresh | `1024` |
+| `VLAN_MAX_MEMBERS` | Max VLAN members exported per refresh | `8192` |
+
+### LAG collector
+
+| Variable | Description | Default |
+|---|---|---|
+| `LAG_ENABLED` | Enable LAG collector | `true` |
+| `LAG_REFRESH_INTERVAL` | Cache refresh interval | `30s` |
+| `LAG_TIMEOUT` | Timeout for one refresh cycle | `2s` |
+| `LAG_MAX_LAGS` | Max LAGs exported per refresh | `512` |
+| `LAG_MAX_MEMBERS` | Max LAG members exported per refresh | `4096` |
+
+### FDB collector
+
+| Variable | Description | Default |
+|---|---|---|
+| `FDB_ENABLED` | Enable FDB collector | `false` |
+| `FDB_REFRESH_INTERVAL` | Cache refresh interval | `60s` |
+| `FDB_TIMEOUT` | Timeout for one refresh cycle | `2s` |
+| `FDB_MAX_ENTRIES` | Max ASIC FDB entries processed per refresh | `50000` |
+| `FDB_MAX_PORTS` | Max per-port FDB series exported | `1024` |
+| `FDB_MAX_VLANS` | Max per-VLAN FDB series exported | `4096` |
+
+### System collector (experimental)
+
+| Variable | Description | Default |
+|---|---|---|
+| `SYSTEM_ENABLED` | Enable system collector | `false` |
+| `SYSTEM_REFRESH_INTERVAL` | Cache refresh interval | `60s` |
+| `SYSTEM_TIMEOUT` | Timeout for one refresh cycle | `4s` |
+| `SYSTEM_COMMAND_ENABLED` | Enable allowlisted read-only command fallback | `true` |
+| `SYSTEM_COMMAND_TIMEOUT` | Timeout per command | `2s` |
+| `SYSTEM_COMMAND_MAX_OUTPUT_BYTES` | Max bytes read per command | `262144` |
+| `SYSTEM_VERSION_FILE` | SONiC version metadata path | `/etc/sonic/sonic_version.yml` |
+| `SYSTEM_MACHINE_CONF_FILE` | Machine config path | `/host/machine.conf` |
+| `SYSTEM_HOSTNAME_FILE` | Hostname path | `/etc/hostname` |
+| `SYSTEM_UPTIME_FILE` | Uptime path | `/proc/uptime` |
+
+Enable:
+
+```bash
+SYSTEM_ENABLED=true ./sonic-exporter
+```
+
+System collector exports:
+
+- `sonic_system_identity_info`
+- `sonic_system_software_info`
+- `sonic_system_uptime_seconds`
+- `sonic_system_collector_success`
+- `sonic_system_scrape_duration_seconds`
+- `sonic_system_cache_age_seconds`
+
+Data source order:
+
+1. Redis (`DEVICE_METADATA|localhost`, `CHASSIS_INFO|chassis 1`)
+2. Read-only files (`/etc/sonic/sonic_version.yml`, `/host/machine.conf`, `/etc/hostname`, `/proc/uptime`)
+3. Optional allowlisted command fallback (`show platform summary --json`, `show version`, `show platform syseeprom`)
+
+### Docker collector (experimental)
+
+| Variable | Description | Default |
+|---|---|---|
+| `DOCKER_ENABLED` | Enable docker collector | `false` |
+| `DOCKER_REFRESH_INTERVAL` | Cache refresh interval | `60s` |
+| `DOCKER_TIMEOUT` | Timeout for one refresh cycle | `2s` |
+| `DOCKER_MAX_CONTAINERS` | Max container entries exported per refresh | `128` |
+| `DOCKER_SOURCE_STALE_THRESHOLD` | Source age threshold for stale signal | `5m` |
+
+Enable:
+
+```bash
+DOCKER_ENABLED=true ./sonic-exporter
+```
+
+Docker collector behavior:
+
+- Reads `STATE_DB` keys `DOCKER_STATS|*` and `DOCKER_STATS|LastUpdateTime`.
+- No Docker socket access.
+- No writes.
+- Controlled label cardinality (`container` only).
+
+## Metrics examples
+
+These are compact anonymized examples. Labels can vary by SONiC platform/version.
+
+```text
+sonic_interface_operational_status{device="Ethernet0"} 1
+sonic_hw_psu_operational_status{psu="PSU1"} 1
+sonic_crm_stats_used{resource="ipv4_route"} 1610
+sonic_queue_dropped_packets_total{device="Ethernet0",queue="3"} 73
+sonic_lldp_neighbors 64
+sonic_vlan_admin_status{vlan="Vlan1000"} 1
+sonic_lag_oper_status{lag="PortChannel1"} 1
+sonic_fdb_entries 1331
+sonic_system_uptime_seconds 123456
+sonic_docker_container_cpu_percent{container="swss"} 1.5
+node_memory_MemAvailable_bytes 1.24e+10
+```
+
+## Validated platforms
+
+These tests were done with SONiC Community releases (not SONiC Enterprise releases).
 
 | Model Number | SONiC Software Version | SONiC OS Version | Distribution | Kernel | Platform | ASIC |
 |---|---|---|---|---|---|---|
@@ -147,115 +241,29 @@ These tests were done with SONiC Community versions, not SONiC Enterprise versio
 | SSE-T7132SR | 202505 | 12 | Debian 12.11 | 6.1.0-29-2-amd64 | x86_64-supermicro_sse_t7132s-r0 | marvell-teralynx |
 | MSN2100-CB2FC | 202411 | 12 | Debian 12.12 | 6.1.0-29-2-amd64 | x86_64-mlnx_msn2100-r0 | mellanox |
 
-## Collector Examples (Anonymized, Compact)
+## Development
 
-These examples are synthetic and anonymized. Use them as query patterns. Labels can vary by SONiC platform/version.
-
-- **Interface collector** - interface health and traffic
-  - `sonic_interface_operational_status{device="Ethernet0"} 1`
-  - `sonic_interface_receive_bytes_total{device="Ethernet0"} 4.8e+09`
-  - Query: `rate(sonic_interface_receive_bytes_total[5m])`
-
-- **HW collector** - PSU and fan status
-  - `sonic_hw_psu_operational_status{psu="PSU1"} 1`
-  - `sonic_hw_fan_speed_rpm{fan="FAN3"} 14200`
-  - Query: `sonic_hw_psu_operational_status == 0`
-
-- **CRM collector** - resource usage and headroom
-  - `sonic_crm_stats_used{resource="ipv4_route"} 1610`
-  - `sonic_crm_stats_available{resource="ipv4_route"} 80299`
-  - Query: `100 * sonic_crm_stats_used / (sonic_crm_stats_used + sonic_crm_stats_available)`
-
-- **Queue collector** - queue drops and watermark pressure
-  - `sonic_queue_dropped_packets_total{device="Ethernet0",queue="3"} 73`
-  - `sonic_queue_watermark_bytes_total{device="Ethernet0",queue="3",type="periodic",watermark="queue_stat_periodic"} 44`
-  - Query: `rate(sonic_queue_dropped_packets_total[5m])`
-
-- **LLDP collector** - neighbor discovery and cache health
-  - `sonic_lldp_neighbor_info{local_interface="Ethernet88",local_role="frontpanel",remote_system_name="leaf02.example.net",remote_port_id="Ethernet88",remote_chassis_id="00:11:22:33:44:55",remote_mgmt_ip="192.0.2.20"} 1`
-  - `sonic_lldp_neighbors 64`
-  - Query: `sonic_lldp_neighbors`
-
-- **VLAN collector** - VLAN state and member mapping
-  - `sonic_vlan_admin_status{vlan="Vlan1000"} 1`
-  - `sonic_vlan_member_info{vlan="Vlan1000",member="Ethernet0",tagging_mode="untagged"} 1`
-  - Query: `sonic_vlan_members`
-
-- **LAG collector** - PortChannel status and member state
-  - `sonic_lag_oper_status{lag="PortChannel1"} 1`
-  - `sonic_lag_member_status{lag="PortChannel1",member="Ethernet24"} 1`
-  - Query: `sonic_lag_oper_status == 0`
-
-- **FDB collector** - MAC learning scale and distribution
-  - `sonic_fdb_entries 1331`
-  - `sonic_fdb_entries_by_port{port="Ethernet88"} 214`
-  - Query: `topk(10, sonic_fdb_entries_by_port)`
-
-- **System collector (experimental, when enabled)** - switch identity and software metadata
-  - `sonic_system_identity_info{hostname="switch01.example.net",platform="x86_64-vendor_switch-r0",hwsku="Example-SKU",asic="broadcom",asic_count="1",serial="ABC123456",model="Model-X",revision="A01"} 1`
-  - `sonic_system_software_info{sonic_version="SONiC.202012.example",debian_version="10.13",kernel_version="4.19.0-12-2-amd64",build_commit="193959ba2"} 1`
-  - Query: `sonic_system_uptime_seconds`
-
-- **Docker collector (experimental, when enabled)** - container runtime metrics from SONiC `STATE_DB`
-  - `sonic_docker_container_cpu_percent{container="swss"} 1.5`
-  - `sonic_docker_container_memory_usage_bytes{container="syncd"} 2.09e+08`
-  - Query: `sonic_docker_source_stale == 1`
-
-- **node_exporter collectors** - host CPU, memory, filesystem
-  - `node_cpu_seconds_total{cpu="0",mode="idle"} 5.93e+06`
-  - `node_memory_MemAvailable_bytes 1.24e+10`
-  - Query: `100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`
-
-# Development
-
-1. Development environment is based on docker-compose. To start it run:
 ```bash
-$ docker-compose up --build -d
+go test ./...
+go build ./...
+./scripts/build.sh
+./scripts/package.sh
+docker-compose up --build -d
 ```
 
-2. To verify that development environment is ready try cURLing the `/metrics` endpoint, you should see exported metrics.:
-```bash
-$ curl localhost:9101/metrics
-```
+Notes:
 
-3. After making code changes rebuild docker container:
-```bash
-$ docker-compose down
-$ docker-compose up --build -d
-```
+- `./scripts/build.sh` produces a static Linux binary (`CGO_ENABLED=0`).
+- If you add keys to Redis fixtures manually, persist them with `SAVE` in Redis.
 
-4. To build a local binary:
-```bash
-$ ./scripts/build.sh
-```
+## Upstream credits and acknowledgments
 
-This script builds a static Linux binary (`CGO_ENABLED=0`), which is safer for older SONiC images.
+This project builds on work from upstream open source projects. Thank you to the maintainers and contributors.
 
-Optional cross-build example:
-```bash
-$ TARGET_OS=linux TARGET_ARCH=amd64 ./scripts/build.sh
-```
+- SONiC project: https://github.com/sonic-net/SONiC
+- Original sonic-exporter fork lineage referenced by module path `github.com/vinted/sonic-exporter`
+- Prometheus ecosystem components used by this project:
+  - `node_exporter`: https://github.com/prometheus/node_exporter
+  - `client_golang`: https://github.com/prometheus/client_golang
 
-5. To build a release tarball (binary + sha256):
-```bash
-$ ./scripts/package.sh
-```
-
-Optional package version override:
-```bash
-$ VERSION=v0.1.0 ./scripts/package.sh
-```
-
-In case you need to add additional keys to redis database don't forget to run `SAVE` in redis after doing so:
-```bash
-$ redis-cli
-$ 127.0.0.1:6379> SAVE
-```
-
-## Test
-
-Currently, tests are using mockredis database which is populated from [fixture files](fixtures/test/).
-To run tests manually simply execute:
-```bash
-$ go test -v ./... 
-```
+If this repository was forked from another `sonic-exporter` repository in your organization history, add that URL here as well so lineage stays explicit for users.
