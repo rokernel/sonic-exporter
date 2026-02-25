@@ -258,7 +258,9 @@ Notes:
 
 ## Run with systemd
 
-This section shows a production-friendly way to run `sonic-exporter` as a Linux service using `systemd`, with collector toggles set by environment variables.
+This section shows an example way to run `sonic-exporter` as a Linux service using `systemd`, with collector toggles set by environment variables.
+
+Note: this `systemd` setup is not fully tested yet. Validate it in a lab or canary environment before using it in production.
 
 ### 1) Create a dedicated service user
 
@@ -429,6 +431,13 @@ Run a **canary** service on a different port:
 - SONiC collector toggles are controlled by environment variables, not dedicated CLI flags.
 - Keep `SYSTEM_ENABLED` and `DOCKER_ENABLED` off unless you need them.
 - If hardening blocks file access on your distro, relax only the minimum setting and document the reason.
+
+## Disclaimer
+
+This project is primarily a learning exercise, and parts of it were developed using AI-assisted workflows (often referred to as "vibe coding") while learning Go.
+
+Before any production deployment, the source code must be reviewed, validated, and approved by qualified human engineers.
+
 ## Upstream credits and acknowledgments
 
 This project builds on work from upstream open source projects. Thank you to the maintainers and contributors.
