@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/prometheus/client_golang/prometheus/testutil"
@@ -633,5 +634,89 @@ func TestDockerCollectorMaxContainers(t *testing.T) {
 
 	if err := testutil.CollectAndCompare(dockerCollector, strings.NewReader(metadata+expected), "sonic_docker_containers", "sonic_docker_entries_skipped"); err != nil {
 		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+}
+
+func TestFrrCollectorDisabledByDefault(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	frrCollector := NewFrrCollector(logger)
+
+	if frrCollector.IsEnabled() {
+		t.Fatal("expected FRR collector to be disabled by default")
+	}
+}
+
+func TestBuildFrrCollectorArgs(t *testing.T) {
+	args := buildFrrCollectorArgs(frrCollectorConfig{
+		enabled:                            true,
+		socketDirPath:                      "/srv/frr",
+		socketTimeout:                      30 * time.Second,
+		vtyshEnabled:                       true,
+		vtyshPath:                          "/usr/local/bin/vtysh",
+		vtyshTimeout:                       45 * time.Second,
+		vtyshSudo:                          true,
+		vtyshOptions:                       "--vty_socket=/run/frr --config_dir=/etc/frr",
+		bgpEnabled:                         true,
+		bgp6Enabled:                        true,
+		bgpL2VPNEnabled:                    true,
+		ospfEnabled:                        true,
+		ospfInstances:                      "1,5",
+		bfdEnabled:                         false,
+		routeEnabled:                       true,
+		routeDetailedEnabled:               true,
+		rpkiEnabled:                        true,
+		vrrpEnabled:                        true,
+		pimEnabled:                         true,
+		statusEnabled:                      false,
+		bgpPeerTypesEnabled:                true,
+		bgpPeerTypesKeys:                   "type,role",
+		bgpPeerDescriptionsEnabled:         true,
+		bgpPeerDescriptionsPlainText:       true,
+		bgpPeerGroupsEnabled:               true,
+		bgpPeerHostnamesEnabled:            true,
+		bgpAdvertisedPrefixesEnabled:       true,
+		bgpNextHopInterfaceEnabled:         true,
+		bgpMonitoredPrefixesFile:           "/etc/sonic-exporter/prefixes.txt",
+		bgpAcceptedFilteredPrefixesEnabled: true,
+	})
+
+	joined := strings.Join(args, " ")
+
+	checks := []string{
+		"--frr.socket.dir-path=/srv/frr",
+		"--frr.socket.timeout=30s",
+		"--frr.vtysh",
+		"--frr.vtysh.path=/usr/local/bin/vtysh",
+		"--frr.vtysh.timeout=45s",
+		"--frr.vtysh.sudo",
+		"--frr.vtysh.options=--vty_socket=/run/frr --config_dir=/etc/frr",
+		"--collector.bgp6",
+		"--collector.bgpl2vpn",
+		"--collector.ospf.instances=1,5",
+		"--no-collector.bfd",
+		"--collector.route.detailed-routes",
+		"--collector.rpki",
+		"--collector.vrrp",
+		"--collector.pim",
+		"--no-collector.status",
+		"--collector.bgp.peer-types",
+		"--collector.bgp.peer-types.keys=type",
+		"--collector.bgp.peer-types.keys=role",
+		"--collector.bgp.peer-descriptions",
+		"--collector.bgp.peer-descriptions.plain-text",
+		"--collector.bgp.peer-groups",
+		"--collector.bgp.peer-hostnames",
+		"--collector.bgp.advertised-prefixes",
+		"--collector.bgp.next-hop-interface",
+		"--collector.bgp.accepted-filtered-prefixes",
+		"--collector.bgp.monitored-prefixes=/etc/sonic-exporter/prefixes.txt",
+	}
+
+	for _, check := range checks {
+		if !strings.Contains(joined, check) {
+			t.Fatalf("expected FRR args to contain %q, got %q", check, joined)
+		}
 	}
 }

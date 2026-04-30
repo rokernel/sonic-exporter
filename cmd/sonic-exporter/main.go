@@ -62,6 +62,7 @@ func main() {
 	fdbCollector := collector.NewFdbCollector(logger)
 	systemCollector := collector.NewSystemCollector(logger)
 	dockerCollector := collector.NewDockerCollector(logger)
+	frrCollector := collector.NewFrrCollector(logger)
 	prometheus.MustRegister(interfaceCollector)
 	prometheus.MustRegister(hwCollector)
 	prometheus.MustRegister(crmCollector)
@@ -83,6 +84,9 @@ func main() {
 	}
 	if dockerCollector.IsEnabled() {
 		prometheus.MustRegister(dockerCollector)
+	}
+	if frrCollector.IsEnabled() {
+		prometheus.MustRegister(frrCollector)
 	}
 
 	// Node exporter collectors
