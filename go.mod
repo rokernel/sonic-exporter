@@ -10,7 +10,7 @@ require (
 	github.com/prometheus/common v0.67.5
 	github.com/prometheus/exporter-toolkit v0.16.0
 	github.com/prometheus/node_exporter v1.11.1
-	github.com/redis/go-redis/v9 v9.6.1
+	github.com/redis/go-redis/v9 v9.19.0
 	github.com/tynany/frr_exporter v1.11.0
 )
 
@@ -26,7 +26,6 @@ require (
 	github.com/cyphar/filepath-securejoin v0.6.1 // indirect
 	github.com/dennwc/btrfs v0.0.0-20260222081608-edfb8b9e4f55 // indirect
 	github.com/dennwc/ioctl v1.0.1-0.20181021180353-017804252068 // indirect
-	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/ema/qdisc v1.0.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
@@ -59,7 +58,7 @@ require (
 	github.com/safchain/ethtool v0.7.0 // indirect
 	github.com/xhit/go-str2duration/v2 v2.1.0 // indirect
 	github.com/yuin/gopher-lua v1.1.0 // indirect
-	go.uber.org/atomic v1.7.0 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
