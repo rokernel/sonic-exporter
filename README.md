@@ -104,6 +104,290 @@ docker-compose up --build -d
 curl localhost:9101/metrics
 ```
 
+`docker-compose.yaml` is for local development only. It starts a test Redis container and is not the production SONiC deployment pattern.
+
+### Docker deployment for SONiC
+
+Optional collectors stay opt in. Keep `SYSTEM_ENABLED=false`, `DOCKER_ENABLED=false`, and `FRR_ENABLED=false` unless you need them.
+
+#### Build the Docker image
+
+Use `scripts/build-image.sh` to build a local image and create an offline archive. Keep `IMAGE_TAG` immutable for each handoff so the tarball, checksum, and deployment notes all point to one exact build.
+
+Use a real release or handoff tag. Do not use `latest`, and do not use a test-only name like `remote-smoke-*` for a deployed switch.
+
+Good examples:
+
+- `v0.1.0`
+- `v0.1.0-f494c35`
+- `2026.05.28-f494c35`
+
+The date-plus-git-sha format is useful for offline handoffs because it is easy to trace back to the source commit.
+
+```bash
+IMAGE_NAME=sonic-exporter \
+IMAGE_TAG=2026.05.28-f494c35 \
+OUTPUT_DIR=./build/docker \
+./scripts/build-image.sh
+```
+
+This script builds the image, writes a tarball with `docker save`, and creates a SHA256 checksum file next to it.
+
+#### Smoke test the image
+
+Run the local smoke test before handing the image to anyone else:
+
+```bash
+IMAGE_NAME=sonic-exporter \
+IMAGE_TAG=2026.05.28-f494c35 \
+./scripts/smoke-image.sh --port 19101
+```
+
+`scripts/smoke-image.sh` starts the container, checks `/metrics`, and cleans up when it is done.
+
+#### Offline handoff
+
+For offline environments, hand off the image tarball, the `.sha256` file, and short run instructions together. The tarball comes from `docker save`, so another team can load it with Docker on the target side and verify the checksum before use.
+
+Example:
+
+```bash
+docker load -i build/docker/sonic-exporter-2026.05.28-f494c35-linux_amd64.docker.tar
+sha256sum -c build/docker/sonic-exporter-2026.05.28-f494c35-linux_amd64.docker.tar.sha256
+```
+
+If you loaded a test image tag during a canary, retag it before using it in a persistent service:
+
+```bash
+sudo docker tag sonic-exporter:remote-smoke-20260528 sonic-exporter:2026.05.28-f494c35
+sudo docker image inspect sonic-exporter:2026.05.28-f494c35 --format '{{.Id}}'
+```
+
+Only retag images you built and tested. Do not use `remote-smoke-*` tags in the final `systemd` unit.
+
+The user's external Ansible repo should copy the tarball, load the image, and run the container later. Keep that deployment logic out of this repo.
+
+#### Runtime environment variables
+
+Minimum SONiC runtime settings:
+
+```bash
+REDIS_ADDRESS=127.0.0.1:6379
+REDIS_NETWORK=tcp
+REDIS_PASSWORD=
+FDB_ENABLED=false
+SYSTEM_ENABLED=false
+DOCKER_ENABLED=false
+FRR_ENABLED=false
+```
+
+`127.0.0.1:6379` assumes the container uses host networking so it can reach the SONiC Redis service on the switch itself.
+
+#### Example docker run for a manual canary
+
+Use host networking on SONiC so Redis at `127.0.0.1:6379` stays reachable from inside the container. This direct `docker run` example is useful for a manual canary test. For reboot persistence, use the `systemd` service in the next section instead.
+
+```bash
+docker run -d \
+  --name sonic-exporter \
+  --network host \
+  --restart unless-stopped \
+  -e REDIS_ADDRESS=127.0.0.1:6379 \
+  -e REDIS_NETWORK=tcp \
+  -e FDB_ENABLED=false \
+  -e SYSTEM_ENABLED=false \
+  -e DOCKER_ENABLED=false \
+  -e FRR_ENABLED=false \
+  sonic-exporter:2026.05.28-f494c35
+```
+
+#### Reboot-persistent SONiC container
+
+SONiC starts its local containers through `systemd` services tied to `sonic.target`, such as `database.service`, `swss.service`, `pmon.service`, and `lldp.service`. For the exporter, use a dedicated `sonic-exporter.service` so `systemd` owns the container lifecycle after reboot.
+
+This unit manages only the `sonic-exporter` container. It does not stop, remove, or restart existing SONiC containers.
+
+Create `/etc/systemd/system/sonic-exporter.service` on the switch:
+
+```ini
+[Unit]
+Description=SONiC Exporter container
+Requires=docker.service database.service
+After=docker.service database.service
+BindsTo=sonic.target
+After=sonic.target
+StartLimitIntervalSec=1200
+StartLimitBurst=3
+
+[Service]
+User=root
+Restart=always
+RestartSec=30
+ExecStartPre=/bin/sh -c 'until /usr/bin/redis-cli -h 127.0.0.1 -p 6379 ping | /bin/grep -q PONG; do sleep 2; done'
+ExecStartPre=-/usr/bin/docker rm -f sonic-exporter
+ExecStart=/usr/bin/docker run --name sonic-exporter --label app=sonic-exporter --label managed-by=systemd --restart no --network host -e REDIS_ADDRESS=127.0.0.1:6379 -e REDIS_NETWORK=tcp -e REDIS_PASSWORD= -e FDB_ENABLED=false -e SYSTEM_ENABLED=false -e DOCKER_ENABLED=false -e FRR_ENABLED=false sonic-exporter:2026.05.28-f494c35
+ExecStop=-/usr/bin/docker stop sonic-exporter
+ExecStopPost=-/usr/bin/docker rm -f sonic-exporter
+
+[Install]
+WantedBy=sonic.target
+```
+
+Enable and start it:
+
+```bash
+sudo systemd-analyze verify /etc/systemd/system/sonic-exporter.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now sonic-exporter.service
+sudo systemctl status sonic-exporter.service --no-pager
+```
+
+Check that only the exporter container is managed by this service:
+
+```bash
+sudo docker inspect sonic-exporter \
+  --format 'Name={{.Name}} Image={{.Config.Image}} Network={{.HostConfig.NetworkMode}} Restart={{.HostConfig.RestartPolicy.Name}} Status={{.State.Status}}'
+```
+
+The Docker restart policy should be `no` when `systemd` owns the container. That keeps one restart owner instead of having both Docker and `systemd` restart the same container.
+
+Validate the Redis-backed collectors on the switch:
+
+```bash
+curl -fsS http://127.0.0.1:9101/metrics | grep -E 'sonic_.*collector_success|sonic_lldp_neighbors'
+```
+
+If you can only reach the switch through SSH, use a tunnel from your workstation:
+
+```bash
+ssh -N -L 19101:127.0.0.1:9101 192.0.2.10
+```
+
+Then scrape locally:
+
+```bash
+curl http://127.0.0.1:19101/metrics
+```
+
+Replace `192.0.2.10` with the switch management address. Direct access to `http://<switch-mgmt-ip>:9101/metrics` may not work when the management interface is in the SONiC management VRF. SSH port forwarding avoids that problem without changing switch firewall or VRF settings.
+
+#### Upgrade the persistent container
+
+Build and test a new immutable image tag first. Do not reuse an old tag for a different image.
+
+Example new tag:
+
+```bash
+IMAGE_NAME=sonic-exporter \
+IMAGE_TAG=2026.06.15-a1b2c3d \
+OUTPUT_DIR=./build/docker \
+./scripts/build-image.sh
+
+IMAGE_NAME=sonic-exporter \
+IMAGE_TAG=2026.06.15-a1b2c3d \
+./scripts/smoke-image.sh --port 19101
+```
+
+Copy the new tarball and checksum to the switch, then load and verify it:
+
+```bash
+sha256sum -c sonic-exporter-2026.06.15-a1b2c3d-linux_amd64.docker.tar.sha256
+sudo docker load -i sonic-exporter-2026.06.15-a1b2c3d-linux_amd64.docker.tar
+sudo docker image inspect sonic-exporter:2026.06.15-a1b2c3d --format '{{.Id}}'
+```
+
+Update only the image tag in `/etc/systemd/system/sonic-exporter.service`, then restart only the exporter service:
+
+```bash
+sudo cp /etc/systemd/system/sonic-exporter.service /etc/systemd/system/sonic-exporter.service.bak
+sudoedit /etc/systemd/system/sonic-exporter.service
+sudo systemd-analyze verify /etc/systemd/system/sonic-exporter.service
+sudo systemctl daemon-reload
+sudo systemctl restart sonic-exporter.service
+sudo systemctl status sonic-exporter.service --no-pager
+```
+
+Validate the new container:
+
+```bash
+sudo docker inspect sonic-exporter \
+  --format 'Image={{.Config.Image}} Status={{.State.Status}} Restart={{.HostConfig.RestartPolicy.Name}}'
+curl -fsS http://127.0.0.1:9101/metrics | grep -E 'sonic_.*collector_success|sonic_lldp_neighbors'
+```
+
+Keep the previous image tag on the switch until the new one has been checked. That makes rollback simple.
+
+#### Roll back to the previous image
+
+Confirm the old image still exists:
+
+```bash
+sudo docker image inspect sonic-exporter:2026.05.28-f494c35 --format '{{.Id}}'
+```
+
+Change `/etc/systemd/system/sonic-exporter.service` back to the previous image tag, then reload and restart only this service:
+
+```bash
+sudoedit /etc/systemd/system/sonic-exporter.service
+sudo systemd-analyze verify /etc/systemd/system/sonic-exporter.service
+sudo systemctl daemon-reload
+sudo systemctl restart sonic-exporter.service
+sudo systemctl status sonic-exporter.service --no-pager
+```
+
+Do not restart SONiC core services for an exporter rollback.
+
+#### Stop, disable, or uninstall
+
+Stop the exporter until the next boot:
+
+```bash
+sudo systemctl stop sonic-exporter.service
+```
+
+Disable it so it does not start at boot:
+
+```bash
+sudo systemctl disable --now sonic-exporter.service
+```
+
+Fully remove the service unit and the exporter container:
+
+```bash
+sudo systemctl disable --now sonic-exporter.service
+sudo systemctl reset-failed sonic-exporter.service 2>/dev/null || true
+sudo rm -f /etc/systemd/system/sonic-exporter.service
+sudo systemctl daemon-reload
+sudo docker rm -f sonic-exporter 2>/dev/null || true
+```
+
+Optionally remove only known exporter image tags after you are sure they are no longer needed:
+
+```bash
+sudo docker image rm sonic-exporter:2026.05.28-f494c35
+sudo docker image rm sonic-exporter:2026.06.15-a1b2c3d
+```
+
+Do not use `docker system prune`, `docker container prune`, or broad `docker rm` commands on a SONiC switch. Those commands can affect SONiC containers that are unrelated to this exporter.
+
+Do not mount /var/run/docker.sock. The Docker collector reads SONiC `STATE_DB` data only and does not need Docker socket access.
+
+If you enable optional collectors later, add only the read-only mounts they need:
+
+- `/etc/sonic:/etc/sonic:ro` for System collector version files
+- `/host:/host:ro` for System collector machine data
+- `/proc:/proc:ro` for System collector uptime
+- `/var/run/frr:/var/run/frr:ro` for FRR socket access
+
+Keep these mounts out unless the related optional collector is enabled.
+
+#### Handoff notes
+
+- This repo builds and tests the image locally.
+- The external Ansible repo should handle copy, `docker load`, container creation, and later rollout steps.
+- Registry publishing is optional and not required for the offline workflow.
+- If you want Debian 11 targets later, treat them as canary validation first. They are not documented here as already validated.
+
 ## Configuration
 
 ### Core settings
@@ -310,9 +594,9 @@ Notes:
 - `./scripts/build.sh` produces a static Linux binary (`CGO_ENABLED=0`).
 - If you add keys to Redis fixtures manually, persist them with `SAVE` in Redis.
 
-## Run with systemd
+## Run the binary with systemd
 
-This section shows an example way to run `sonic-exporter` as a Linux service using `systemd`, with collector toggles set by environment variables.
+This section shows an example way to run the `sonic-exporter` binary as a Linux service using `systemd`, with collector toggles set by environment variables. For the Docker image on a SONiC switch, prefer the `sonic-exporter.service` container unit in the Docker deployment section above.
 
 Note: this `systemd` setup is not fully tested yet. Validate it in a lab or canary environment before using it in production.
 

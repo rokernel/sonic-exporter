@@ -25,3 +25,9 @@ jobs:
           cache: false
       - name: golangci-lint
         run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run
+  docker-image-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: smoke Docker image
+        run: scripts/smoke-image.sh
