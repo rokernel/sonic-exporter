@@ -621,6 +621,38 @@ Notes:
 - `./scripts/build.sh` produces a static Linux binary (`CGO_ENABLED=0`).
 - If you add keys to Redis fixtures manually, persist them with `SAVE` in Redis.
 
+## Releases
+
+Releases are created from annotated Git tags. Create a tag in `vX.Y.Z` form, then push the tag to GitHub:
+
+```bash
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+The release workflow runs on pushed tags, not on pull requests. When the tag is pushed, GitHub Actions runs GoReleaser and publishes these release artifacts:
+
+- Linux amd64 `.tar.gz` archive
+- `checksums.txt`
+- SBOM JSON files for the archive artifacts
+- GHCR image `ghcr.io/rokernel/sonic-exporter:vX.Y.Z`
+
+This repo does not publish `.deb` packages.
+
+To verify downloaded release files:
+
+```bash
+sha256sum -c checksums.txt
+```
+
+If release attestations are present in GitHub for that tag, you can verify them with GitHub CLI:
+
+```bash
+gh attestation verify <artifact-file> --repo rokernel/sonic-exporter
+```
+
+This release flow works on a free GitHub account for a public repo, as long as you stay within normal GitHub Actions, Releases, and GHCR limits.
+
 ## Run the binary with systemd
 
 This section shows an example way to run the `sonic-exporter` binary as a Linux service using `systemd`, with collector toggles set by environment variables. For the Docker image on a SONiC switch, prefer the `sonic-exporter.service` container unit in the Docker deployment section above.
