@@ -11,10 +11,35 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/promslog"
 	"github.com/vinted/sonic-exporter/pkg/redis"
 )
+
+func assertMetricFamilyPresence(t *testing.T, c prometheus.Collector, metricName string, wantPresent bool) {
+	t.Helper()
+
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(c)
+
+	metricFamilies, err := registry.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	present := false
+	for _, mf := range metricFamilies {
+		if mf.GetName() == metricName {
+			present = true
+			break
+		}
+	}
+
+	if present != wantPresent {
+		t.Fatalf("metric family %q presence=%v, want=%v", metricName, present, wantPresent)
+	}
+}
 
 type redisDatabase struct {
 	DbId string                       `json:"id"`
@@ -118,7 +143,7 @@ func TestInterfaceCollector(t *testing.T) {
 	promslogConfig := &promslog.Config{}
 	logger := promslog.New(promslogConfig)
 
-	interfaceCollector := NewInterfaceCollector(logger)
+	interfaceCollector := NewInterfaceCollector(logger, NewMetricFilter(logger))
 
 	problems, err := testutil.CollectAndLint(interfaceCollector)
 	if err != nil {
@@ -152,7 +177,7 @@ func TestHwCollector(t *testing.T) {
 	promslogConfig := &promslog.Config{}
 	logger := promslog.New(promslogConfig)
 
-	hwCollector := NewHwCollector(logger)
+	hwCollector := NewHwCollector(logger, NewMetricFilter(logger))
 
 	problems, err := testutil.CollectAndLint(hwCollector)
 	if err != nil {
@@ -182,11 +207,37 @@ func TestHwCollector(t *testing.T) {
 	}
 }
 
+func TestHwCollectorMetricFilter(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	t.Run("default emits hw metrics", func(t *testing.T) {
+		hwCollector := NewHwCollector(logger, NewMetricFilter(logger))
+		assertMetricFamilyPresence(t, hwCollector, "sonic_hw_fan_rpm", true)
+		assertMetricFamilyPresence(t, hwCollector, "sonic_hw_psu_info", true)
+	})
+
+	t.Run("wildcard disable removes fan metric families", func(t *testing.T) {
+		t.Setenv("SONIC_DISABLED_METRICS", "sonic_hw_fan_*")
+		hwCollector := NewHwCollector(logger, NewMetricFilter(logger))
+		assertMetricFamilyPresence(t, hwCollector, "sonic_hw_fan_rpm", false)
+		assertMetricFamilyPresence(t, hwCollector, "sonic_hw_fan_operational_status", false)
+		assertMetricFamilyPresence(t, hwCollector, "sonic_hw_fan_available_status", false)
+		assertMetricFamilyPresence(t, hwCollector, "sonic_hw_psu_info", true)
+	})
+
+	t.Run("exact disable removes hw scrape duration metric", func(t *testing.T) {
+		t.Setenv("SONIC_DISABLED_METRICS", "sonic_hw_scrape_duration_seconds")
+		hwCollector := NewHwCollector(logger, NewMetricFilter(logger))
+		assertMetricFamilyPresence(t, hwCollector, "sonic_hw_scrape_duration_seconds", false)
+	})
+}
+
 func TestCrmCollector(t *testing.T) {
 	promslogConfig := &promslog.Config{}
 	logger := promslog.New(promslogConfig)
 
-	crmCollector := NewCrmCollector(logger)
+	crmCollector := NewCrmCollector(logger, NewMetricFilter(logger))
 
 	problems, err := testutil.CollectAndLint(crmCollector)
 	if err != nil {
@@ -216,11 +267,31 @@ func TestCrmCollector(t *testing.T) {
 	}
 }
 
+func TestCrmCollectorMetricFilter(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	t.Run("default emits crm metrics", func(t *testing.T) {
+		crmCollector := NewCrmCollector(logger, NewMetricFilter(logger))
+		assertMetricFamilyPresence(t, crmCollector, "sonic_crm_resource_used", true)
+		assertMetricFamilyPresence(t, crmCollector, "sonic_crm_acl_resource_used", true)
+	})
+
+	t.Run("wildcard disable removes resource metric families", func(t *testing.T) {
+		t.Setenv("SONIC_DISABLED_METRICS", "sonic_crm_resource_*")
+		crmCollector := NewCrmCollector(logger, NewMetricFilter(logger))
+		assertMetricFamilyPresence(t, crmCollector, "sonic_crm_resource_used", false)
+		assertMetricFamilyPresence(t, crmCollector, "sonic_crm_resource_available", false)
+		assertMetricFamilyPresence(t, crmCollector, "sonic_crm_acl_resource_used", true)
+		assertMetricFamilyPresence(t, crmCollector, "sonic_crm_acl_resource_available", true)
+	})
+}
+
 func TestQueueCollector(t *testing.T) {
 	promslogConfig := &promslog.Config{}
 	logger := promslog.New(promslogConfig)
 
-	queueCollector := NewQueueCollector(logger)
+	queueCollector := NewQueueCollector(logger, NewMetricFilter(logger))
 
 	problems, err := testutil.CollectAndLint(queueCollector)
 	if err != nil {
@@ -250,11 +321,51 @@ func TestQueueCollector(t *testing.T) {
 	}
 }
 
+func TestQueueCollectorMetricFilter(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	t.Run("default emits queue watermark metric", func(t *testing.T) {
+		queueCollector := NewQueueCollector(logger, NewMetricFilter(logger))
+		assertMetricFamilyPresence(t, queueCollector, "sonic_queue_watermark_bytes_total", true)
+	})
+
+	t.Run("exact disable removes queue watermark metric", func(t *testing.T) {
+		t.Setenv("SONIC_DISABLED_METRICS", "sonic_queue_watermark_bytes_total")
+		queueCollector := NewQueueCollector(logger, NewMetricFilter(logger))
+		assertMetricFamilyPresence(t, queueCollector, "sonic_queue_watermark_bytes_total", false)
+	})
+
+	t.Run("wildcard disable removes queue metric families", func(t *testing.T) {
+		t.Setenv("SONIC_DISABLED_METRICS", "sonic_queue_*")
+		queueCollector := NewQueueCollector(logger, NewMetricFilter(logger))
+		assertMetricFamilyPresence(t, queueCollector, "sonic_queue_watermark_bytes_total", false)
+		assertMetricFamilyPresence(t, queueCollector, "sonic_queue_packets_total", false)
+		assertMetricFamilyPresence(t, queueCollector, "sonic_queue_collector_success", false)
+	})
+}
+
+func TestInterfaceCollectorMetricFilter(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	t.Run("default emits interface mtu metric", func(t *testing.T) {
+		interfaceCollector := NewInterfaceCollector(logger, NewMetricFilter(logger))
+		assertMetricFamilyPresence(t, interfaceCollector, "sonic_interface_mtu_bytes", true)
+	})
+
+	t.Run("exact disable removes interface mtu metric", func(t *testing.T) {
+		t.Setenv("SONIC_DISABLED_METRICS", "sonic_interface_mtu_bytes")
+		interfaceCollector := NewInterfaceCollector(logger, NewMetricFilter(logger))
+		assertMetricFamilyPresence(t, interfaceCollector, "sonic_interface_mtu_bytes", false)
+	})
+}
+
 func TestLldpCollector(t *testing.T) {
 	promslogConfig := &promslog.Config{}
 	logger := promslog.New(promslogConfig)
 
-	lldpCollector := NewLldpCollector(logger)
+	lldpCollector := NewLldpCollector(logger, NewMetricFilter(logger))
 
 	problems, err := testutil.CollectAndLint(lldpCollector)
 	if err != nil {
@@ -303,7 +414,7 @@ func TestVlanCollector(t *testing.T) {
 	promslogConfig := &promslog.Config{}
 	logger := promslog.New(promslogConfig)
 
-	vlanCollector := NewVlanCollector(logger)
+	vlanCollector := NewVlanCollector(logger, NewMetricFilter(logger))
 
 	problems, err := testutil.CollectAndLint(vlanCollector)
 	if err != nil {
@@ -346,11 +457,24 @@ func TestVlanCollector(t *testing.T) {
 	}
 }
 
+func TestVlanCollectorMetricFilter(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	t.Run("wildcard disable removes vlan metric families", func(t *testing.T) {
+		t.Setenv("SONIC_DISABLED_METRICS", "sonic_vlan_*")
+		vlanCollector := NewVlanCollector(logger, NewMetricFilter(logger))
+		assertMetricFamilyPresence(t, vlanCollector, "sonic_vlan_info", false)
+		assertMetricFamilyPresence(t, vlanCollector, "sonic_vlan_members", false)
+		assertMetricFamilyPresence(t, vlanCollector, "sonic_vlan_collector_success", false)
+	})
+}
+
 func TestLagCollector(t *testing.T) {
 	promslogConfig := &promslog.Config{}
 	logger := promslog.New(promslogConfig)
 
-	lagCollector := NewLagCollector(logger)
+	lagCollector := NewLagCollector(logger, NewMetricFilter(logger))
 
 	problems, err := testutil.CollectAndLint(lagCollector)
 	if err != nil {
@@ -398,7 +522,7 @@ func TestFdbCollector(t *testing.T) {
 	promslogConfig := &promslog.Config{}
 	logger := promslog.New(promslogConfig)
 
-	fdbCollector := NewFdbCollector(logger)
+	fdbCollector := NewFdbCollector(logger, NewMetricFilter(logger))
 
 	problems, err := testutil.CollectAndLint(fdbCollector)
 	if err != nil {
@@ -488,11 +612,23 @@ func TestFdbCollector(t *testing.T) {
 	}
 }
 
+func TestFdbCollectorMetricFilter(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	t.Run("exact disable removes only fdb entries by port", func(t *testing.T) {
+		t.Setenv("SONIC_DISABLED_METRICS", "sonic_fdb_entries_by_port")
+		fdbCollector := NewFdbCollector(logger, NewMetricFilter(logger))
+		assertMetricFamilyPresence(t, fdbCollector, "sonic_fdb_entries_by_port", false)
+		assertMetricFamilyPresence(t, fdbCollector, "sonic_fdb_entries", true)
+	})
+}
+
 func TestSystemCollector(t *testing.T) {
 	promslogConfig := &promslog.Config{}
 	logger := promslog.New(promslogConfig)
 
-	systemCollector := NewSystemCollector(logger)
+	systemCollector := NewSystemCollector(logger, NewMetricFilter(logger))
 
 	problems, err := testutil.CollectAndLint(systemCollector)
 	if err != nil {
@@ -546,11 +682,23 @@ func TestSystemCollector(t *testing.T) {
 	}
 }
 
+func TestSystemCollectorMetricFilter(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	t.Run("exact disable removes uptime metric family only", func(t *testing.T) {
+		t.Setenv("SONIC_DISABLED_METRICS", "sonic_system_uptime_seconds")
+		systemCollector := NewSystemCollector(logger, NewMetricFilter(logger))
+		assertMetricFamilyPresence(t, systemCollector, "sonic_system_uptime_seconds", false)
+		assertMetricFamilyPresence(t, systemCollector, "sonic_system_identity_info", true)
+	})
+}
+
 func TestDockerCollector(t *testing.T) {
 	promslogConfig := &promslog.Config{}
 	logger := promslog.New(promslogConfig)
 
-	dockerCollector := NewDockerCollector(logger)
+	dockerCollector := NewDockerCollector(logger, NewMetricFilter(logger))
 
 	problems, err := testutil.CollectAndLint(dockerCollector)
 	if err != nil {
@@ -618,7 +766,7 @@ func TestDockerCollectorMaxContainers(t *testing.T) {
 	promslogConfig := &promslog.Config{}
 	logger := promslog.New(promslogConfig)
 
-	dockerCollector := NewDockerCollector(logger)
+	dockerCollector := NewDockerCollector(logger, NewMetricFilter(logger))
 
 	metadata := `
 		# HELP sonic_docker_containers Number of containers with DOCKER_STATS entries
@@ -635,6 +783,30 @@ func TestDockerCollectorMaxContainers(t *testing.T) {
 	if err := testutil.CollectAndCompare(dockerCollector, strings.NewReader(metadata+expected), "sonic_docker_containers", "sonic_docker_entries_skipped"); err != nil {
 		t.Errorf("unexpected collecting result:\n%s", err)
 	}
+}
+
+func TestDockerCollectorMetricFilter(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	t.Run("wildcard disable removes docker container metric families", func(t *testing.T) {
+		t.Setenv("SONIC_DISABLED_METRICS", "sonic_docker_container_*")
+		dockerCollector := NewDockerCollector(logger, NewMetricFilter(logger))
+		assertMetricFamilyPresence(t, dockerCollector, "sonic_docker_container_info", false)
+		assertMetricFamilyPresence(t, dockerCollector, "sonic_docker_container_cpu_percent", false)
+		assertMetricFamilyPresence(t, dockerCollector, "sonic_docker_containers", true)
+
+		metadata := `
+			# HELP sonic_docker_entries_skipped Number of docker entries skipped during latest refresh
+			# TYPE sonic_docker_entries_skipped gauge
+		`
+		expected := `
+			sonic_docker_entries_skipped 1
+		`
+		if err := testutil.CollectAndCompare(dockerCollector, strings.NewReader(metadata+expected), "sonic_docker_entries_skipped"); err != nil {
+			t.Errorf("unexpected collecting result:\n%s", err)
+		}
+	})
 }
 
 func TestFrrCollectorDisabledByDefault(t *testing.T) {

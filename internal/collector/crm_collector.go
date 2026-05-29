@@ -22,10 +22,20 @@ type crmCollector struct {
 	cachedMetrics           []prometheus.Metric
 	lastScrapeTime          time.Time
 	logger                  *slog.Logger
+	metricFilter            MetricFilter
 	mu                      sync.Mutex
 }
 
-func NewCrmCollector(logger *slog.Logger) *crmCollector {
+const (
+	crmResourceAvailableMetricName    = "sonic_crm_resource_available"
+	crmResourceUsedMetricName         = "sonic_crm_resource_used"
+	crmAclResourceAvailableMetricName = "sonic_crm_acl_resource_available"
+	crmAclResourceUsedMetricName      = "sonic_crm_acl_resource_used"
+	crmScrapeDurationMetricName       = "sonic_crm_scrape_duration_seconds"
+	crmCollectorSuccessMetricName     = "sonic_crm_collector_success"
+)
+
+func NewCrmCollector(logger *slog.Logger, metricFilter MetricFilter) *crmCollector {
 	const (
 		namespace = "sonic"
 		subsystem = "crm"
@@ -44,7 +54,8 @@ func NewCrmCollector(logger *slog.Logger) *crmCollector {
 			"Time it took for prometheus to scrape sonic crm metrics", nil, nil),
 		scrapeCollectorSuccess: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "collector_success"),
 			"Whether crm collector succeeded", nil, nil),
-		logger: logger,
+		logger:       logger,
+		metricFilter: metricFilter,
 	}
 }
 
@@ -82,9 +93,11 @@ func (collector *crmCollector) Collect(ch chan<- prometheus.Metric) {
 		scrapeSuccess = 0
 		collector.logger.Error("Error scraping metrics", "error", err)
 	}
-	collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
-		collector.scrapeCollectorSuccess, prometheus.GaugeValue, scrapeSuccess,
-	))
+	if collector.metricFilter.Enabled(crmCollectorSuccessMetricName) {
+		collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
+			collector.scrapeCollectorSuccess, prometheus.GaugeValue, scrapeSuccess,
+		))
+	}
 
 	for _, cachedMetric := range collector.cachedMetrics {
 		ch <- cachedMetric
@@ -122,9 +135,11 @@ func (collector *crmCollector) scrapeMetrics(ctx context.Context) error {
 
 	collector.logger.Info("Ending crm metric scrape")
 	collector.lastScrapeTime = time.Now()
-	collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
-		collector.scrapeDuration, prometheus.GaugeValue, time.Since(scrapeTime).Seconds(),
-	))
+	if collector.metricFilter.Enabled(crmScrapeDurationMetricName) {
+		collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
+			collector.scrapeDuration, prometheus.GaugeValue, time.Since(scrapeTime).Seconds(),
+		))
+	}
 	return nil
 }
 
@@ -137,16 +152,20 @@ func (collector *crmCollector) collectCrmStatsCounters(ctx context.Context, crmS
 
 		if strings.HasSuffix(stat, "available") {
 			label := strings.TrimSuffix(strings.TrimPrefix(stat, "crm_stats_"), "_available")
-			collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
-				collector.crmResourceAvailable, prometheus.GaugeValue, parsedValue, label,
-			))
+			if collector.metricFilter.Enabled(crmResourceAvailableMetricName) {
+				collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
+					collector.crmResourceAvailable, prometheus.GaugeValue, parsedValue, label,
+				))
+			}
 		}
 
 		if strings.HasSuffix(stat, "used") {
 			label := strings.TrimSuffix(strings.TrimPrefix(stat, "crm_stats_"), "_used")
-			collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
-				collector.crmResourceUsed, prometheus.GaugeValue, parsedValue, label,
-			))
+			if collector.metricFilter.Enabled(crmResourceUsedMetricName) {
+				collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
+					collector.crmResourceUsed, prometheus.GaugeValue, parsedValue, label,
+				))
+			}
 		}
 	}
 
@@ -173,16 +192,20 @@ func (collector *crmCollector) collectCrmAclStats(ctx context.Context, redisClie
 
 			if strings.HasSuffix(stat, "available") {
 				label := strings.TrimSuffix(strings.TrimPrefix(stat, "crm_stats_"), "_available")
-				collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
-					collector.crmAclResourceAvailable, prometheus.GaugeValue, parsedValue, aclTarget, label,
-				))
+				if collector.metricFilter.Enabled(crmAclResourceAvailableMetricName) {
+					collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
+						collector.crmAclResourceAvailable, prometheus.GaugeValue, parsedValue, aclTarget, label,
+					))
+				}
 			}
 
 			if strings.HasSuffix(stat, "used") {
 				label := strings.TrimSuffix(strings.TrimPrefix(stat, "crm_stats_"), "_used")
-				collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
-					collector.crmAclResourceUsed, prometheus.GaugeValue, parsedValue, aclTarget, label,
-				))
+				if collector.metricFilter.Enabled(crmAclResourceUsedMetricName) {
+					collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
+						collector.crmAclResourceUsed, prometheus.GaugeValue, parsedValue, aclTarget, label,
+					))
+				}
 			}
 		}
 	}
