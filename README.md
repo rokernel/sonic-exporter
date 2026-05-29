@@ -175,6 +175,7 @@ Minimum SONiC runtime settings:
 REDIS_ADDRESS=127.0.0.1:6379
 REDIS_NETWORK=tcp
 REDIS_PASSWORD=
+SONIC_DISABLED_METRICS=
 FDB_ENABLED=false
 SYSTEM_ENABLED=false
 DOCKER_ENABLED=false
@@ -194,6 +195,7 @@ docker run -d \
   --restart unless-stopped \
   -e REDIS_ADDRESS=127.0.0.1:6379 \
   -e REDIS_NETWORK=tcp \
+  -e SONIC_DISABLED_METRICS= \
   -e FDB_ENABLED=false \
   -e SYSTEM_ENABLED=false \
   -e DOCKER_ENABLED=false \
@@ -225,7 +227,7 @@ Restart=always
 RestartSec=30
 ExecStartPre=/bin/sh -c 'until /usr/bin/redis-cli -h 127.0.0.1 -p 6379 ping | /bin/grep -q PONG; do sleep 2; done'
 ExecStartPre=-/usr/bin/docker rm -f sonic-exporter
-ExecStart=/usr/bin/docker run --name sonic-exporter --label app=sonic-exporter --label managed-by=systemd --restart no --network host -e REDIS_ADDRESS=127.0.0.1:6379 -e REDIS_NETWORK=tcp -e REDIS_PASSWORD= -e FDB_ENABLED=false -e SYSTEM_ENABLED=false -e DOCKER_ENABLED=false -e FRR_ENABLED=false sonic-exporter:2026.05.28-f494c35
+ExecStart=/usr/bin/docker run --name sonic-exporter --label app=sonic-exporter --label managed-by=systemd --restart no --network host -e REDIS_ADDRESS=127.0.0.1:6379 -e REDIS_NETWORK=tcp -e REDIS_PASSWORD= -e SONIC_DISABLED_METRICS= -e FDB_ENABLED=false -e SYSTEM_ENABLED=false -e DOCKER_ENABLED=false -e FRR_ENABLED=false sonic-exporter:2026.05.28-f494c35
 ExecStop=-/usr/bin/docker stop sonic-exporter
 ExecStopPost=-/usr/bin/docker rm -f sonic-exporter
 
@@ -397,6 +399,31 @@ Keep these mounts out unless the related optional collector is enabled.
 | `REDIS_ADDRESS` | Redis address (`host:port` for TCP) | `localhost:6379` |
 | `REDIS_PASSWORD` | Password for Redis | empty |
 | `REDIS_NETWORK` | Redis network type (`tcp` or `unix`) | `tcp` |
+| `SONIC_DISABLED_METRICS` | Comma-separated full metric names or wildcard patterns to suppress for in-repo SONiC collectors only | empty |
+
+### Source-side metric disabling
+
+Use `SONIC_DISABLED_METRICS` to suppress metric families from the in-repo SONiC collectors at exporter startup.
+
+- Matching uses full Prometheus metric names only.
+- Matching is case-sensitive.
+- Tokens are comma-separated and surrounding whitespace is ignored.
+- You must restart the exporter after changing this setting. There is no runtime reload.
+- This applies only to the in-repo SONiC collectors in this repo. It does not apply to upstream `node_exporter` metrics or FRR wrapper metrics.
+
+Exact-name example:
+
+```bash
+SONIC_DISABLED_METRICS=sonic_queue_watermark_bytes_total,sonic_interface_mtu_bytes
+```
+
+Wildcard example:
+
+```bash
+SONIC_DISABLED_METRICS='sonic_queue_*'
+```
+
+Be careful with broad patterns. A wide match can also hide health metrics such as `sonic_queue_collector_success`, `sonic_queue_scrape_duration_seconds`, `sonic_system_collector_success`, or `sonic_system_scrape_duration_seconds` if the full metric names match.
 
 ### LLDP collector
 
@@ -624,6 +651,7 @@ sudo tee /etc/sonic-exporter/sonic-exporter.env >/dev/null <<'EOF'
 REDIS_ADDRESS=localhost:6379
 REDIS_PASSWORD=
 REDIS_NETWORK=tcp
+SONIC_DISABLED_METRICS=
 
 LLDP_ENABLED=true
 VLAN_ENABLED=true

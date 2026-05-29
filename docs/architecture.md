@@ -101,6 +101,10 @@ Use this model when the project intentionally reuses a mature upstream collector
   - Wraps upstream `frr_exporter` collectors.
   - Uses FRR Unix sockets by default and can optionally use `vtysh`.
   - Keeps upstream `frr_*` metric names and collector-specific behavior.
+- Source-side metric disabling:
+  - In-repo SONiC collectors must use the shared metric filter created in `cmd/sonic-exporter/main.go`.
+  - Match decisions are by full Prometheus metric family name.
+  - Upstream `node_exporter` metrics and FRR wrapper metrics are outside this filter.
 
 ## Cardinality and scale protections
 
@@ -125,23 +129,25 @@ Use this workflow to match existing project style.
 4. Choose execution model:
    - Scrape-time cache (simple, lower complexity).
    - Background refresh loop (better for heavier scans and bounded scrape latency).
-5. Ensure `Collect` emits cached data only (no direct Redis calls in `Collect`).
-6. Add health metrics:
+5. Pass the shared metric filter into the new in-repo SONiC collector and use it for every metric family emitted by that collector.
+6. Guard expensive metric groups before collection or read work when possible, not only at emit time. For example, skip source reads for a disabled family instead of gathering data and dropping it later.
+7. Ensure `Collect` emits cached data only (no direct Redis calls in `Collect`).
+8. Add health metrics:
    - `<subsystem>_collector_success`
    - `<subsystem>_scrape_duration_seconds`
    - `<subsystem>_cache_age_seconds` (for refresh-loop model)
-7. Add skip/truncation/stale metrics when data volume can explode.
-8. Wire collector in `cmd/sonic-exporter/main.go`:
-   - instantiate `collector.New<Name>Collector(logger)`
+9. Add skip/truncation/stale metrics when data volume can explode.
+10. Wire collector in `cmd/sonic-exporter/main.go`:
+   - instantiate the collector with the shared metric filter for in-repo SONiC collectors
    - register with `prometheus.MustRegister(...)`
    - if optional, gate on `IsEnabled()`.
-9. Add fixture data under `fixtures/test/*.json` as needed.
-10. Extend `internal/collector/collector_test.go`:
+11. Add fixture data under `fixtures/test/*.json` as needed.
+12. Extend `internal/collector/collector_test.go`:
     - `CollectAndLint` check
     - success metric assertion
     - key metric assertions
     - safety metric assertions (`entries_skipped`, `entries_truncated`, etc.)
-11. Update docs:
+13. Update docs:
     - `README.md` collector list + env vars + examples
     - this file (`docs/architecture.md`) if architecture behavior changed.
 
