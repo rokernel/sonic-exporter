@@ -1,10 +1,60 @@
+version: 2
+
 project_name: sonic-exporter
+
 builds:
-  - env: [CGO_ENABLED=0]
+  - id: sonic-exporter
+    main: ./cmd/sonic-exporter
+    env:
+      - CGO_ENABLED=0
     goos:
       - linux
     goarch:
       - amd64
-    id: "sonic-exporter"
-    dir: .
-    main: ./cmd/sonic-exporter
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+archives:
+  - id: sonic-exporter
+    ids:
+      - sonic-exporter
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+dockers:
+  - id: ghcr
+    use: buildx
+    dockerfile: Dockerfile
+    goos: linux
+    goarch: amd64
+    ids:
+      - sonic-exporter
+    image_templates:
+      - ghcr.io/rokernel/sonic-exporter:{{ .Tag }}
+      - '{{ if and (not .Prerelease) (not .IsNightly) (not .IsSnapshot) }}ghcr.io/rokernel/sonic-exporter:latest{{ end }}'
+    extra_files:
+      - go.mod
+      - go.sum
+      - cmd
+      - internal
+      - pkg
+    build_flag_templates:
+      - --platform=linux/amd64
+      - --pull
+      - --build-arg=VERSION={{ .Version }}
+      - --build-arg=REVISION={{ .ShortCommit }}
+      - --build-arg=CREATED={{ .Date }}
+      - --build-arg=SOURCE=https://github.com/rokernel/sonic-exporter
+
+sboms:
+  - artifacts: archive
