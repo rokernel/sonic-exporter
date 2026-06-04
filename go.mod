@@ -7,7 +7,8 @@ require (
 	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0
 	github.com/prometheus/client_golang v1.23.2
-	github.com/prometheus/common v0.67.5
+	github.com/prometheus/client_model v0.6.2
+	github.com/prometheus/common v0.68.1
 	github.com/prometheus/exporter-toolkit v0.16.0
 	github.com/prometheus/node_exporter v1.11.1
 	github.com/redis/go-redis/v9 v9.20.0
@@ -51,7 +52,6 @@ require (
 	github.com/opencontainers/selinux v1.13.1 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/prometheus-community/go-runit v0.1.0 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/procfs v0.20.1 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
 	github.com/safchain/ethtool v0.7.0 // indirect
