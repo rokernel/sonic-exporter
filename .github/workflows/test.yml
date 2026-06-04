@@ -18,6 +18,12 @@ jobs:
         with:
           go-version: '1.25.x'
       - run: go test -v ./...
+  validate-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: validate dashboard JSON
+        run: ./scripts/validate-dashboard.sh dashboards/sonic-exporter.json
   golangci-lint:
     runs-on: ubuntu-latest
     steps:

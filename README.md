@@ -88,6 +88,29 @@ For a deeper breakdown, see `docs/architecture.md`.
 
 Collector implementations live in `internal/collector/*_collector.go`.
 
+## Grafana dashboard
+
+The Grafana dashboard lives in `dashboards/sonic-exporter.json`. It is a single-switch drilldown dashboard for Grafana 10 and Grafana 11.
+
+Rows are ordered this way:
+
+- `Overview / Exporter Health`
+- `Interfaces / Queues`
+- `Hardware / CRM / Host`
+- `Topology / L2`
+- `Optional / FDB`
+- `Optional / System`
+- `Optional / Docker`
+- `Optional / FRR`
+
+The optional rows are collapsed by default and are safe when those metrics are absent. Validate dashboard changes with:
+
+```bash
+./scripts/validate-dashboard.sh dashboards/sonic-exporter.json
+```
+
+For import, provisioning, variables, validation, smoke checks, and limits, see `docs/grafana-dashboard.md`.
+
 ## Quick start
 
 ### Run locally

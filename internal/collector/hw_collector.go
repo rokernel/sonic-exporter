@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,42 +15,40 @@ import (
 )
 
 type hwCollector struct {
-	hwPsuInfo                 *prometheus.Desc
-	hwPsuInputVoltageVolts    *prometheus.Desc
-	hwPsuInputCurrentAmperes  *prometheus.Desc
-	hwPsuOutputVoltageVolts   *prometheus.Desc
-	hwPsuOutputCurrentAmperes *prometheus.Desc
-	hwPsuOperationalStatus    *prometheus.Desc
-	hwPsuAvailableStatus      *prometheus.Desc
-	hwPsuTemperatureCelsius   *prometheus.Desc
-	hwFanRpm                  *prometheus.Desc
-	hwFanOperationalStatus    *prometheus.Desc
-	hwFanAvailableStatus      *prometheus.Desc
-	hwChassisInfo             *prometheus.Desc
-	scrapeDuration            *prometheus.Desc
-	scrapeCollectorSuccess    *prometheus.Desc
-	cachedMetrics             []prometheus.Metric
-	lastScrapeTime            time.Time
-	logger                    *slog.Logger
-	metricFilter              MetricFilter
-	mu                        sync.Mutex
+	hwPsuInfo               *prometheus.Desc
+	hwPsuVoltageVolts       *prometheus.Desc
+	hwPsuCurrentAmperes     *prometheus.Desc
+	hwPsuPowerWatts         *prometheus.Desc
+	hwPsuOperationalStatus  *prometheus.Desc
+	hwPsuAvailableStatus    *prometheus.Desc
+	hwPsuTemperatureCelsius *prometheus.Desc
+	hwFanRpm                *prometheus.Desc
+	hwFanOperationalStatus  *prometheus.Desc
+	hwFanAvailableStatus    *prometheus.Desc
+	hwChassisInfo           *prometheus.Desc
+	scrapeDuration          *prometheus.Desc
+	scrapeCollectorSuccess  *prometheus.Desc
+	cachedMetrics           []prometheus.Metric
+	lastScrapeTime          time.Time
+	logger                  *slog.Logger
+	metricFilter            MetricFilter
+	mu                      sync.Mutex
 }
 
 const (
-	hwPsuInfoMetricName                 = "sonic_hw_psu_info"
-	hwPsuInputVoltageVoltsMetricName    = "sonic_hw_psu_input_voltage_volts"
-	hwPsuInputCurrentAmperesMetricName  = "sonic_hw_psu_input_current_amperes"
-	hwPsuOutputVoltageVoltsMetricName   = "sonic_hw_psu_output_voltage_volts"
-	hwPsuOutputCurrentAmperesMetricName = "sonic_hw_psu_output_current_amperes"
-	hwPsuOperationalStatusMetricName    = "sonic_hw_psu_operational_status"
-	hwPsuAvailableStatusMetricName      = "sonic_hw_psu_available_status"
-	hwPsuTemperatureCelsiusMetricName   = "sonic_hw_psu_temperature_celsius"
-	hwFanRpmMetricName                  = "sonic_hw_fan_rpm"
-	hwFanOperationalStatusMetricName    = "sonic_hw_fan_operational_status"
-	hwFanAvailableStatusMetricName      = "sonic_hw_fan_available_status"
-	hwChassisInfoMetricName             = "sonic_hw_chassis_info"
-	hwScrapeDurationMetricName          = "sonic_hw_scrape_duration_seconds"
-	hwCollectorSuccessMetricName        = "sonic_hw_collector_success"
+	hwPsuInfoMetricName               = "sonic_hw_psu_info"
+	hwPsuVoltageVoltsMetricName       = "sonic_hw_psu_voltage_volts"
+	hwPsuCurrentAmperesMetricName     = "sonic_hw_psu_current_amperes"
+	hwPsuPowerWattsMetricName         = "sonic_hw_psu_power_watts"
+	hwPsuOperationalStatusMetricName  = "sonic_hw_psu_operational_status"
+	hwPsuAvailableStatusMetricName    = "sonic_hw_psu_available_status"
+	hwPsuTemperatureCelsiusMetricName = "sonic_hw_psu_temperature_celsius"
+	hwFanRpmMetricName                = "sonic_hw_fan_rpm"
+	hwFanOperationalStatusMetricName  = "sonic_hw_fan_operational_status"
+	hwFanAvailableStatusMetricName    = "sonic_hw_fan_available_status"
+	hwChassisInfoMetricName           = "sonic_hw_chassis_info"
+	hwScrapeDurationMetricName        = "sonic_hw_scrape_duration_seconds"
+	hwCollectorSuccessMetricName      = "sonic_hw_collector_success"
 )
 
 func NewHwCollector(logger *slog.Logger, metricFilter MetricFilter) *hwCollector {
@@ -61,14 +60,12 @@ func NewHwCollector(logger *slog.Logger, metricFilter MetricFilter) *hwCollector
 	return &hwCollector{
 		hwPsuInfo: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "psu_info"),
 			"Non-numeric data about PSU, value is always 1", []string{"slot", "serial", "model_name", "model"}, nil),
-		hwPsuInputVoltageVolts: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "psu_input_voltage_volts"),
-			"PSU input voltage", []string{"slot"}, nil),
-		hwPsuInputCurrentAmperes: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "psu_input_current_amperes"),
-			"PSU input current", []string{"slot"}, nil),
-		hwPsuOutputVoltageVolts: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "psu_output_voltage_volts"),
-			"PSU output voltage", []string{"slot"}, nil),
-		hwPsuOutputCurrentAmperes: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "psu_output_current_amperes"),
-			"PSU output current", []string{"slot"}, nil),
+		hwPsuVoltageVolts: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "psu_voltage_volts"),
+			"PSU voltage", []string{"slot"}, nil),
+		hwPsuCurrentAmperes: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "psu_current_amperes"),
+			"PSU current", []string{"slot"}, nil),
+		hwPsuPowerWatts: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "psu_power_watts"),
+			"PSU power", []string{"slot"}, nil),
 		hwPsuOperationalStatus: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "psu_operational_status"),
 			"PSU operational status: 0(DOWN), 1(UP)", []string{"slot"}, nil),
 		hwPsuAvailableStatus: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "psu_available_status"),
@@ -94,10 +91,9 @@ func NewHwCollector(logger *slog.Logger, metricFilter MetricFilter) *hwCollector
 
 func (collector *hwCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- collector.hwPsuInfo
-	ch <- collector.hwPsuInputVoltageVolts
-	ch <- collector.hwPsuInputCurrentAmperes
-	ch <- collector.hwPsuOutputVoltageVolts
-	ch <- collector.hwPsuOutputCurrentAmperes
+	ch <- collector.hwPsuVoltageVolts
+	ch <- collector.hwPsuCurrentAmperes
+	ch <- collector.hwPsuPowerWatts
 	ch <- collector.hwPsuOperationalStatus
 	ch <- collector.hwPsuAvailableStatus
 	ch <- collector.hwPsuTemperatureCelsius
@@ -232,38 +228,29 @@ func (collector *hwCollector) collectPsuInfo(ctx context.Context, redisClient re
 		}
 
 		// voltage, amperage and temperature metrics are appended only if values can be parsed
-		inVolts, err := parseFloat(data["input_voltage"])
+		volts, err := parsePsuFloat(data["voltage"])
 		if err == nil {
-			if collector.metricFilter.Enabled(hwPsuInputVoltageVoltsMetricName) {
+			if collector.metricFilter.Enabled(hwPsuVoltageVoltsMetricName) {
 				collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
-					collector.hwPsuInputVoltageVolts, prometheus.GaugeValue, inVolts, psuId,
+					collector.hwPsuVoltageVolts, prometheus.GaugeValue, volts, psuId,
 				))
 			}
 		}
 
-		inAmperes, err := parseFloat(data["input_current"])
+		amperes, err := parsePsuFloat(data["current"])
 		if err == nil {
-			if collector.metricFilter.Enabled(hwPsuInputCurrentAmperesMetricName) {
+			if collector.metricFilter.Enabled(hwPsuCurrentAmperesMetricName) {
 				collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
-					collector.hwPsuInputCurrentAmperes, prometheus.GaugeValue, inAmperes, psuId,
+					collector.hwPsuCurrentAmperes, prometheus.GaugeValue, amperes, psuId,
 				))
 			}
 		}
 
-		outVolts, err := parseFloat(data["output_voltage"])
+		power, err := parsePsuFloat(data["power"])
 		if err == nil {
-			if collector.metricFilter.Enabled(hwPsuOutputVoltageVoltsMetricName) {
+			if collector.metricFilter.Enabled(hwPsuPowerWattsMetricName) {
 				collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
-					collector.hwPsuOutputVoltageVolts, prometheus.GaugeValue, outVolts, psuId,
-				))
-			}
-		}
-
-		outAmperes, err := parseFloat(data["output_current"])
-		if err == nil {
-			if collector.metricFilter.Enabled(hwPsuOutputCurrentAmperesMetricName) {
-				collector.cachedMetrics = append(collector.cachedMetrics, prometheus.MustNewConstMetric(
-					collector.hwPsuOutputCurrentAmperes, prometheus.GaugeValue, outAmperes, psuId,
+					collector.hwPsuPowerWatts, prometheus.GaugeValue, power, psuId,
 				))
 			}
 		}
@@ -279,6 +266,20 @@ func (collector *hwCollector) collectPsuInfo(ctx context.Context, redisClient re
 	}
 
 	return nil
+}
+
+func parsePsuFloat(value string) (float64, error) {
+	value = strings.TrimSpace(value)
+	if value == "" || strings.EqualFold(value, "N/A") {
+		return 0, fmt.Errorf("invalid PSU value: %q", value)
+	}
+
+	parsedValue, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid PSU value: %w", err)
+	}
+
+	return parsedValue, nil
 }
 
 func (collector *hwCollector) collectFanInfo(ctx context.Context, redisClient redis.Client) error {

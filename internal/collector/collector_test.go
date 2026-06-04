@@ -6,6 +6,8 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +15,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	clientModel "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/promslog"
 	"github.com/vinted/sonic-exporter/pkg/redis"
 )
@@ -39,6 +42,89 @@ func assertMetricFamilyPresence(t *testing.T, c prometheus.Collector, metricName
 	if present != wantPresent {
 		t.Fatalf("metric family %q presence=%v, want=%v", metricName, present, wantPresent)
 	}
+}
+
+func getMetricFamily(t *testing.T, c prometheus.Collector, metricName string) *clientModel.MetricFamily {
+	t.Helper()
+
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(c)
+
+	metricFamilies, err := registry.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	for _, mf := range metricFamilies {
+		if mf.GetName() == metricName {
+			return mf
+		}
+	}
+
+	return nil
+}
+
+func hasPsuSlotInMetricFamily(metricFamily *clientModel.MetricFamily, slot string) bool {
+	if metricFamily == nil {
+		return false
+	}
+
+	for _, metric := range metricFamily.Metric {
+		for _, label := range metric.Label {
+			if label.GetName() == "slot" && label.GetValue() == slot {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func collectPsuSlotsFromMetricFamily(metricFamily *clientModel.MetricFamily) []string {
+	if metricFamily == nil {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+
+	for _, metric := range metricFamily.Metric {
+		for _, label := range metric.Label {
+			if label.GetName() == "slot" {
+				seen[label.GetValue()] = struct{}{}
+			}
+		}
+	}
+
+	slots := make([]string, 0, len(seen))
+	for slot := range seen {
+		slots = append(slots, slot)
+	}
+
+	sort.Strings(slots)
+	return slots
+}
+
+func collectMetricFamilyNamesWithPrefix(t *testing.T, c prometheus.Collector, prefix string) []string {
+	t.Helper()
+
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(c)
+
+	metricFamilies, err := registry.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
+
+	var names []string
+	for _, mf := range metricFamilies {
+		name := mf.GetName()
+		if strings.HasPrefix(name, prefix) {
+			names = append(names, name)
+		}
+	}
+
+	sort.Strings(names)
+	return names
 }
 
 type redisDatabase struct {
@@ -194,15 +280,34 @@ func TestHwCollector(t *testing.T) {
 	metadata := `
 		# HELP sonic_hw_collector_success Whether hw collector succeeded
 		# TYPE sonic_hw_collector_success gauge
+		# HELP sonic_hw_psu_voltage_volts PSU voltage
+		# TYPE sonic_hw_psu_voltage_volts gauge
+		# HELP sonic_hw_psu_current_amperes PSU current
+		# TYPE sonic_hw_psu_current_amperes gauge
+		# HELP sonic_hw_psu_power_watts PSU power
+		# TYPE sonic_hw_psu_power_watts gauge
 	`
 
 	expected := `
 
 	 sonic_hw_collector_success 1
+	 sonic_hw_psu_voltage_volts{slot="1"} 12.4
+	 sonic_hw_psu_voltage_volts{slot="2"} 12.3
+	 sonic_hw_psu_current_amperes{slot="1"} 5
+	 sonic_hw_psu_current_amperes{slot="2"} 5
+	 sonic_hw_psu_power_watts{slot="1"} 60
+	 sonic_hw_psu_power_watts{slot="2"} 60
 	`
 	success_metric := "sonic_hw_collector_success"
 
-	if err := testutil.CollectAndCompare(hwCollector, strings.NewReader(metadata+expected), success_metric); err != nil {
+	if err := testutil.CollectAndCompare(
+		hwCollector,
+		strings.NewReader(metadata+expected),
+		success_metric,
+		"sonic_hw_psu_voltage_volts",
+		"sonic_hw_psu_current_amperes",
+		"sonic_hw_psu_power_watts",
+	); err != nil {
 		t.Errorf("unexpected collecting result:\n%s", err)
 	}
 }
@@ -214,7 +319,24 @@ func TestHwCollectorMetricFilter(t *testing.T) {
 	t.Run("default emits hw metrics", func(t *testing.T) {
 		hwCollector := NewHwCollector(logger, NewMetricFilter(logger))
 		assertMetricFamilyPresence(t, hwCollector, "sonic_hw_fan_rpm", true)
+		assertMetricFamilyPresence(t, hwCollector, "sonic_hw_psu_voltage_volts", true)
+		assertMetricFamilyPresence(t, hwCollector, "sonic_hw_psu_current_amperes", true)
+		assertMetricFamilyPresence(t, hwCollector, "sonic_hw_psu_power_watts", true)
 		assertMetricFamilyPresence(t, hwCollector, "sonic_hw_psu_info", true)
+
+		psuMetricNames := collectMetricFamilyNamesWithPrefix(t, hwCollector, "sonic_hw_psu_")
+		expectedPsuMetricNames := []string{
+			"sonic_hw_psu_available_status",
+			"sonic_hw_psu_current_amperes",
+			"sonic_hw_psu_info",
+			"sonic_hw_psu_operational_status",
+			"sonic_hw_psu_power_watts",
+			"sonic_hw_psu_voltage_volts",
+		}
+
+		if !reflect.DeepEqual(expectedPsuMetricNames, psuMetricNames) {
+			t.Fatalf("unexpected PSU metric families: got %v want %v", psuMetricNames, expectedPsuMetricNames)
+		}
 	})
 
 	t.Run("wildcard disable removes fan metric families", func(t *testing.T) {
@@ -231,6 +353,53 @@ func TestHwCollectorMetricFilter(t *testing.T) {
 		hwCollector := NewHwCollector(logger, NewMetricFilter(logger))
 		assertMetricFamilyPresence(t, hwCollector, "sonic_hw_scrape_duration_seconds", false)
 	})
+}
+
+func TestHwCollectorPsuNumericMetricParsing(t *testing.T) {
+	ctx := context.Background()
+	redisClient, err := redis.NewClient()
+	if err != nil {
+		t.Fatalf("failed to create redis client: %v", err)
+	}
+
+	err = redisClient.HsetToDb(ctx, "STATE_DB", "PSU_INFO|PSU 3", map[string]string{
+		"presence": "true",
+		"status":   "true",
+		"model":    "BAD-MODEL",
+		"serial":   "BAD-SERIAL",
+		"voltage":  "",
+		"current":  "N/A",
+		"power":    "not-a-number",
+	})
+	if err != nil {
+		t.Fatalf("failed to write invalid PSU sample data: %v", err)
+	}
+
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	hwCollector := NewHwCollector(logger, NewMetricFilter(logger))
+	hwCollector.lastScrapeTime = time.Time{}
+	hwCollector.cachedMetrics = nil
+
+	voltageFamily := getMetricFamily(t, hwCollector, "sonic_hw_psu_voltage_volts")
+	if hasPsuSlotInMetricFamily(voltageFamily, "3") {
+		t.Fatalf("unexpected voltage metric for PSU 3 with empty value")
+	}
+
+	currentFamily := getMetricFamily(t, hwCollector, "sonic_hw_psu_current_amperes")
+	if hasPsuSlotInMetricFamily(currentFamily, "3") {
+		t.Fatalf("unexpected current metric for PSU 3 with N/A value")
+	}
+
+	powerFamily := getMetricFamily(t, hwCollector, "sonic_hw_psu_power_watts")
+	if hasPsuSlotInMetricFamily(powerFamily, "3") {
+		t.Fatalf("unexpected power metric for PSU 3 with malformed value")
+	}
+
+	if !hasPsuSlotInMetricFamily(voltageFamily, "1") || !hasPsuSlotInMetricFamily(voltageFamily, "2") {
+		t.Fatalf("expected valid voltage values from fixture PSUs 1 and 2, got %v", collectPsuSlotsFromMetricFamily(voltageFamily))
+	}
 }
 
 func TestCrmCollector(t *testing.T) {
