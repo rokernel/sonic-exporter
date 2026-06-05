@@ -103,6 +103,125 @@
       "model": "Model-X",
       "revision": "A01"
     },
+    "ASIC_TEMPERATURE_INFO": {
+      "temperature_0": "45",
+      "temperature_1": "47",
+      "maximum_temperature": "50",
+      "average_temperature": "46"
+    },
+    "TEMPERATURE_SFP_MAX": {
+      "maximum_temperature": "31",
+      "timestamp": "20260605 10:46:20"
+    },
+    "TRANSCEIVER_STATUS|Ethernet0": {
+      "module_state": "ModuleReady",
+      "module_fault_cause": "No Fault detected",
+      "tx1OutputStatus": "True",
+      "tx2OutputStatus": "False",
+      "rx1OutputStatusHostlane": "True",
+      "rx2OutputStatusHostlane": "True",
+      "tx1disable": "False",
+      "tx2disable": "True",
+      "last_update_time": "Fri Jun 05 10:44:56 2026"
+    },
+    "TRANSCEIVER_STATUS_FLAG|Ethernet0": {
+      "tx1fault": "False",
+      "tx2fault": "True",
+      "rx1los": "False",
+      "rx2los": "True",
+      "last_update_time": "Fri Jun 05 10:44:56 2026"
+    },
+    "TRANSCEIVER_STATUS_FLAG_CHANGE_COUNT|Ethernet0": {
+      "tx1fault": "0",
+      "tx2fault": "1",
+      "rx1los": "0",
+      "rx2los": "2"
+    },
+    "TRANSCEIVER_STATUS_FLAG_CLEAR_TIME|Ethernet0": {
+      "tx1fault": "never",
+      "tx2fault": "Fri Jun 05 10:44:00 2026",
+      "rx1los": "never",
+      "rx2los": "Fri Jun 05 10:45:00 2026"
+    },
+    "TRANSCEIVER_STATUS_FLAG_SET_TIME|Ethernet0": {
+      "tx1fault": "never",
+      "tx2fault": "Fri Jun 05 10:40:00 2026",
+      "rx1los": "never",
+      "rx2los": "Fri Jun 05 10:41:00 2026"
+    },
+    "TRANSCEIVER_DOM_FLAG|Ethernet0": {
+      "tempHAlarm": "False",
+      "tempLAlarm": "False",
+      "tx1powerHAlarm": "True",
+      "tx1powerLWarn": "False",
+      "last_update_time": "Fri Jun 05 10:44:56 2026"
+    },
+    "TRANSCEIVER_DOM_FLAG_CHANGE_COUNT|Ethernet0": {
+      "tempHAlarm": "0",
+      "tempLAlarm": "0",
+      "tx1powerHAlarm": "3",
+      "tx1powerLWarn": "1"
+    },
+    "TRANSCEIVER_DOM_FLAG_CLEAR_TIME|Ethernet0": {
+      "tempHAlarm": "never",
+      "tempLAlarm": "never",
+      "tx1powerHAlarm": "Fri Jun 05 10:43:00 2026",
+      "tx1powerLWarn": "Fri Jun 05 10:42:00 2026"
+    },
+    "TRANSCEIVER_DOM_FLAG_SET_TIME|Ethernet0": {
+      "tempHAlarm": "never",
+      "tempLAlarm": "never",
+      "tx1powerHAlarm": "Fri Jun 05 10:41:00 2026",
+      "tx1powerLWarn": "Fri Jun 05 10:40:00 2026"
+    },
+    "TRANSCEIVER_DOM_THRESHOLD|Ethernet0": {
+      "temphighalarm": "80.0",
+      "templowalarm": "-5.0",
+      "txpowerhighalarm": "6.5",
+      "txpowerlowwarning": "-4.3",
+      "last_update_time": "Fri Jun 05 10:44:56 2026"
+    },
+    "PROCESS_STATS|1": {
+      "CMD": "/sbin/init",
+      "CPU": "0.0",
+      "MEM": "0.1",
+      "PPID": "0",
+      "STIME": "May29",
+      "TIME": "0:07:49",
+      "TT": "None",
+      "UID": "0"
+    },
+    "PROCESS_STATS|42": {
+      "CMD": "/usr/bin/orchagent",
+      "CPU": "1.5",
+      "MEM": "2.5",
+      "PPID": "1",
+      "STIME": "May29",
+      "TIME": "0:00:30",
+      "TT": "None",
+      "UID": "1000"
+    },
+    "PROCESS_STATS|LastUpdateTime": {
+      "lastupdate": "2026-06-05 10:26:12"
+    },
+    "STORAGE_INFO|sda": {
+      "device_model": "M.2 (S80) 3ME4",
+      "serial": "TESTSERIAL001",
+      "firmware": "L20420",
+      "health": "100",
+      "temperature": "32",
+      "latest_fsio_reads": "18564",
+      "latest_fsio_writes": "894008",
+      "disk_io_reads": "9704",
+      "disk_io_writes": "17085",
+      "reserved_blocks": "133",
+      "last_sync_time": "2026-06-05 10:26:12",
+      "total_fsio_reads": "29562",
+      "total_fsio_writes": "1821638"
+    },
+    "SYSTEM_HEALTH_INFO": {
+      "summary": "OK"
+    },
     "DOCKER_STATS|0001": {
       "NAME": "swss",
       "CPU%": "1.5",

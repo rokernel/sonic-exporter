@@ -25,6 +25,7 @@ type lldpCollectorConfig struct {
 }
 
 type lldpCollector struct {
+	lldpLocalChassisInfo   *prometheus.Desc
 	lldpNeighborInfo       *prometheus.Desc
 	lldpNeighbors          *prometheus.Desc
 	scrapeDuration         *prometheus.Desc
@@ -52,6 +53,8 @@ func NewLldpCollector(logger *slog.Logger, metricFilter MetricFilter) *lldpColle
 	)
 
 	collector := &lldpCollector{
+		lldpLocalChassisInfo: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "local_chassis_info"),
+			"Non-numeric data about local LLDP chassis, value is always 1", []string{"system_name", "chassis_id"}, nil),
 		lldpNeighborInfo: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "neighbor_info"),
 			"Non-numeric data about LLDP neighbor, value is always 1", []string{"local_interface", "local_role", "remote_system_name", "remote_port_id", "remote_port_desc", "remote_port_id_subtype", "remote_port_display", "remote_chassis_id", "remote_mgmt_ip"}, nil),
 		lldpNeighbors: prometheus.NewDesc(prometheus.BuildFQName(namespace, subsystem, "neighbors"),
@@ -86,6 +89,7 @@ func (collector *lldpCollector) IsEnabled() bool {
 
 func (collector *lldpCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- collector.lldpNeighborInfo
+	ch <- collector.lldpLocalChassisInfo
 	ch <- collector.lldpNeighbors
 	ch <- collector.scrapeDuration
 	ch <- collector.scrapeCollectorSuccess
@@ -182,9 +186,23 @@ func (collector *lldpCollector) scrapeMetrics(ctx context.Context) ([]prometheus
 
 	sort.Strings(lldpKeys)
 
-	metrics := make([]prometheus.Metric, 0, len(lldpKeys))
+	metrics := make([]prometheus.Metric, 0, len(lldpKeys)+1)
 	neighbors := 0
 	skippedEntries := 0
+
+	localChassisData, err := redisClient.HgetAllFromDb(ctx, "APPL_DB", "LLDP_LOC_CHASSIS")
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("failed to read LLDP local chassis entry: %w", err)
+	}
+	if len(localChassisData) > 0 && collector.metricFilter.Enabled("sonic_lldp_local_chassis_info") {
+		metrics = append(metrics, prometheus.MustNewConstMetric(
+			collector.lldpLocalChassisInfo,
+			prometheus.GaugeValue,
+			1,
+			localChassisData["lldp_loc_sys_name"],
+			localChassisData["lldp_loc_chassis_id"],
+		))
+	}
 
 	for _, lldpKey := range lldpKeys {
 		if neighbors >= collector.config.maxNeighbors {

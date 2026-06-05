@@ -82,6 +82,32 @@
     },
     "LAG_MEMBER_TABLE:PortChannel2:Ethernet92": {
       "status": "enabled"
+    },
+    "NEIGH_TABLE:eth0:192.0.2.1": {
+      "neigh": "00:11:22:33:44:55",
+      "family": "IPv4"
+    },
+    "NEIGH_TABLE:Ethernet0:2001:db8::1": {
+      "neigh": "00:11:22:33:44:66",
+      "family": "IPv6"
+    },
+    "ROUTE_TABLE:192.0.2.0/24": {
+      "protocol": "kernel",
+      "nexthop": "0.0.0.0",
+      "ifname": "eth0"
+    },
+    "ROUTE_TABLE:2001:db8::/64": {
+      "protocol": "static",
+      "nexthop": "::",
+      "ifname": "Ethernet0"
+    },
+    "SWITCH_TABLE:switch": {
+      "ecmp_hash_offset": "0",
+      "ecmp_hash_seed": "10",
+      "fdb_aging_time": "600",
+      "lag_hash_offset": "1",
+      "lag_hash_seed": "20",
+      "ordered_ecmp": "true"
     }
   }
 }

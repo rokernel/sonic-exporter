@@ -61,6 +61,11 @@ func main() {
 	vlanCollector := collector.NewVlanCollector(logger, metricFilter)
 	lagCollector := collector.NewLagCollector(logger, metricFilter)
 	fdbCollector := collector.NewFdbCollector(logger, metricFilter)
+	routingCollector := collector.NewRoutingCollector(logger, metricFilter)
+	switchCollector := collector.NewSwitchCollector(logger, metricFilter)
+	thermalCollector := collector.NewThermalCollector(logger, metricFilter)
+	transceiverCollector := collector.NewTransceiverCollector(logger, metricFilter)
+	platformHealthCollector := collector.NewPlatformHealthCollector(logger, metricFilter)
 	systemCollector := collector.NewSystemCollector(logger, metricFilter)
 	dockerCollector := collector.NewDockerCollector(logger, metricFilter)
 	frrCollector := collector.NewFrrCollector(logger)
@@ -79,6 +84,21 @@ func main() {
 	}
 	if fdbCollector.IsEnabled() {
 		prometheus.MustRegister(fdbCollector)
+	}
+	if routingCollector.IsEnabled() {
+		prometheus.MustRegister(routingCollector)
+	}
+	if switchCollector.IsEnabled() {
+		prometheus.MustRegister(switchCollector)
+	}
+	if thermalCollector.IsEnabled() {
+		prometheus.MustRegister(thermalCollector)
+	}
+	if transceiverCollector.IsEnabled() {
+		prometheus.MustRegister(transceiverCollector)
+	}
+	if platformHealthCollector.IsEnabled() {
+		prometheus.MustRegister(platformHealthCollector)
 	}
 	if systemCollector.IsEnabled() {
 		prometheus.MustRegister(systemCollector)

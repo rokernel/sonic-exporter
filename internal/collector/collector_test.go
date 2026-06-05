@@ -64,6 +64,35 @@ func getMetricFamily(t *testing.T, c prometheus.Collector, metricName string) *c
 	return nil
 }
 
+func metricWithLabelsExists(metricFamily *clientModel.MetricFamily, labels map[string]string, value float64) bool {
+	if metricFamily == nil {
+		return false
+	}
+
+	for _, metric := range metricFamily.Metric {
+		matches := true
+		for labelName, labelValue := range labels {
+			found := false
+			for _, label := range metric.Label {
+				if label.GetName() == labelName && label.GetValue() == labelValue {
+					found = true
+					break
+				}
+			}
+			if !found {
+				matches = false
+				break
+			}
+		}
+
+		if matches && metric.GetGauge() != nil && metric.GetGauge().GetValue() == value {
+			return true
+		}
+	}
+
+	return false
+}
+
 func hasPsuSlotInMetricFamily(metricFamily *clientModel.MetricFamily, slot string) bool {
 	if metricFamily == nil {
 		return false
@@ -193,6 +222,11 @@ func TestMain(m *testing.M) {
 	os.Setenv("VLAN_ENABLED", "true")
 	os.Setenv("LAG_ENABLED", "true")
 	os.Setenv("FDB_ENABLED", "true")
+	os.Setenv("ROUTING_ENABLED", "true")
+	os.Setenv("SWITCH_ENABLED", "true")
+	os.Setenv("THERMAL_ENABLED", "true")
+	os.Setenv("TRANSCEIVER_ENABLED", "true")
+	os.Setenv("PLATFORM_HEALTH_ENABLED", "true")
 	os.Setenv("SYSTEM_ENABLED", "true")
 	os.Setenv("DOCKER_ENABLED", "true")
 	os.Setenv("SYSTEM_COMMAND_ENABLED", "false")
@@ -215,6 +249,11 @@ func TestMain(m *testing.M) {
 	os.Unsetenv("VLAN_ENABLED")
 	os.Unsetenv("LAG_ENABLED")
 	os.Unsetenv("FDB_ENABLED")
+	os.Unsetenv("ROUTING_ENABLED")
+	os.Unsetenv("SWITCH_ENABLED")
+	os.Unsetenv("THERMAL_ENABLED")
+	os.Unsetenv("TRANSCEIVER_ENABLED")
+	os.Unsetenv("PLATFORM_HEALTH_ENABLED")
 	os.Unsetenv("SYSTEM_ENABLED")
 	os.Unsetenv("DOCKER_ENABLED")
 	os.Unsetenv("SYSTEM_COMMAND_ENABLED")
@@ -576,6 +615,194 @@ func TestLldpCollector(t *testing.T) {
 
 	if err := testutil.CollectAndCompare(lldpCollector, strings.NewReader(neighborMetadata+neighborExpected), "sonic_lldp_neighbor_info"); err != nil {
 		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+
+	localChassisMetadata := `
+		# HELP sonic_lldp_local_chassis_info Non-numeric data about local LLDP chassis, value is always 1
+		# TYPE sonic_lldp_local_chassis_info gauge
+	`
+
+	localChassisExpected := `
+		sonic_lldp_local_chassis_info{chassis_id="74:86:e2:a4:6c:a5",system_name="net-tor-lab002.lau1"} 1
+	`
+
+	if err := testutil.CollectAndCompare(lldpCollector, strings.NewReader(localChassisMetadata+localChassisExpected), "sonic_lldp_local_chassis_info"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+}
+
+func TestRoutingCollector(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	routingCollector := NewRoutingCollector(logger, NewMetricFilter(logger))
+
+	problems, err := testutil.CollectAndLint(routingCollector)
+	if err != nil {
+		t.Error("metric lint completed with errors")
+	}
+
+	for _, problem := range problems {
+		t.Errorf("metric %v has a problem: %v", problem.Metric, problem.Text)
+	}
+
+	neighborFamily := getMetricFamily(t, routingCollector, "sonic_routing_neighbor_entries")
+	if !metricWithLabelsExists(neighborFamily, map[string]string{"interface": "eth0", "family": "ipv4"}, 1) {
+		t.Fatalf("expected ipv4 neighbor count for eth0")
+	}
+	if !metricWithLabelsExists(neighborFamily, map[string]string{"interface": "Ethernet0", "family": "ipv6"}, 1) {
+		t.Fatalf("expected ipv6 neighbor count for Ethernet0")
+	}
+
+	routeFamily := getMetricFamily(t, routingCollector, "sonic_routing_route_entries")
+	if !metricWithLabelsExists(routeFamily, map[string]string{"family": "ipv4", "protocol": "kernel"}, 1) {
+		t.Fatalf("expected ipv4 route count for kernel routes")
+	}
+	if !metricWithLabelsExists(routeFamily, map[string]string{"family": "ipv6", "protocol": "static"}, 1) {
+		t.Fatalf("expected ipv6 route count for static routes")
+	}
+}
+
+func TestSwitchCollector(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	switchCollector := NewSwitchCollector(logger, NewMetricFilter(logger))
+
+	problems, err := testutil.CollectAndLint(switchCollector)
+	if err != nil {
+		t.Error("metric lint completed with errors")
+	}
+
+	for _, problem := range problems {
+		t.Errorf("metric %v has a problem: %v", problem.Metric, problem.Text)
+	}
+
+	metadata := `
+		# HELP sonic_switch_fdb_aging_time_seconds FDB aging time from SWITCH_TABLE
+		# TYPE sonic_switch_fdb_aging_time_seconds gauge
+		# HELP sonic_switch_ordered_ecmp Whether ordered ECMP is enabled (1=yes, 0=no)
+		# TYPE sonic_switch_ordered_ecmp gauge
+	`
+	expected := `
+		sonic_switch_fdb_aging_time_seconds{switch="switch"} 600
+		sonic_switch_ordered_ecmp{switch="switch"} 1
+	`
+	if err := testutil.CollectAndCompare(switchCollector, strings.NewReader(metadata+expected), "sonic_switch_fdb_aging_time_seconds", "sonic_switch_ordered_ecmp"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+}
+
+func TestThermalCollector(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	thermalCollector := NewThermalCollector(logger, NewMetricFilter(logger))
+
+	problems, err := testutil.CollectAndLint(thermalCollector)
+	if err != nil {
+		t.Error("metric lint completed with errors")
+	}
+
+	for _, problem := range problems {
+		t.Errorf("metric %v has a problem: %v", problem.Metric, problem.Text)
+	}
+
+	metadata := `
+		# HELP sonic_thermal_asic_temperature_celsius ASIC per-sensor temperature in celsius
+		# TYPE sonic_thermal_asic_temperature_celsius gauge
+		# HELP sonic_thermal_sfp_maximum_temperature_celsius Maximum transceiver temperature across all optics
+		# TYPE sonic_thermal_sfp_maximum_temperature_celsius gauge
+	`
+	expected := `
+		sonic_thermal_asic_temperature_celsius{sensor="temperature_0"} 45
+		sonic_thermal_asic_temperature_celsius{sensor="temperature_1"} 47
+		sonic_thermal_sfp_maximum_temperature_celsius 31
+	`
+	if err := testutil.CollectAndCompare(thermalCollector, strings.NewReader(metadata+expected), "sonic_thermal_asic_temperature_celsius", "sonic_thermal_sfp_maximum_temperature_celsius"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+}
+
+func TestTransceiverCollector(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	transceiverCollector := NewTransceiverCollector(logger, NewMetricFilter(logger))
+
+	problems, err := testutil.CollectAndLint(transceiverCollector)
+	if err != nil {
+		t.Error("metric lint completed with errors")
+	}
+
+	for _, problem := range problems {
+		t.Errorf("metric %v has a problem: %v", problem.Metric, problem.Text)
+	}
+
+	infoMetadata := `
+		# HELP sonic_transceiver_module_info Transceiver module state metadata, value is always 1
+		# TYPE sonic_transceiver_module_info gauge
+	`
+	infoExpected := `
+		sonic_transceiver_module_info{device="Ethernet0",module_fault_cause="No Fault detected",module_state="ModuleReady"} 1
+	`
+	if err := testutil.CollectAndCompare(transceiverCollector, strings.NewReader(infoMetadata+infoExpected), "sonic_transceiver_module_info"); err != nil {
+		t.Errorf("unexpected collecting result:\n%s", err)
+	}
+
+	statusFamily := getMetricFamily(t, transceiverCollector, "sonic_transceiver_status_value")
+	if !metricWithLabelsExists(statusFamily, map[string]string{"device": "Ethernet0", "field": "rx1OutputStatusHostlane"}, 1) {
+		t.Fatalf("expected rx1OutputStatusHostlane status metric")
+	}
+	if !metricWithLabelsExists(statusFamily, map[string]string{"device": "Ethernet0", "field": "tx2disable"}, 1) {
+		t.Fatalf("expected tx2disable status metric")
+	}
+
+	thresholdFamily := getMetricFamily(t, transceiverCollector, "sonic_transceiver_dom_threshold_value")
+	if !metricWithLabelsExists(thresholdFamily, map[string]string{"device": "Ethernet0", "threshold": "temphighalarm"}, 80) {
+		t.Fatalf("expected temphighalarm threshold metric")
+	}
+	if !metricWithLabelsExists(thresholdFamily, map[string]string{"device": "Ethernet0", "threshold": "txpowerlowwarning"}, -4.3) {
+		t.Fatalf("expected txpowerlowwarning threshold metric")
+	}
+}
+
+func TestPlatformHealthCollector(t *testing.T) {
+	promslogConfig := &promslog.Config{}
+	logger := promslog.New(promslogConfig)
+
+	platformCollector := NewPlatformHealthCollector(logger, NewMetricFilter(logger))
+
+	problems, err := testutil.CollectAndLint(platformCollector)
+	if err != nil {
+		t.Error("metric lint completed with errors")
+	}
+
+	for _, problem := range problems {
+		t.Errorf("metric %v has a problem: %v", problem.Metric, problem.Text)
+	}
+
+	processInfoFamily := getMetricFamily(t, platformCollector, "sonic_platform_process_info")
+	if !metricWithLabelsExists(processInfoFamily, map[string]string{"pid": "1", "process": "init", "uid": "0"}, 1) {
+		t.Fatalf("expected init process info metric")
+	}
+	if !metricWithLabelsExists(processInfoFamily, map[string]string{"pid": "42", "process": "orchagent", "uid": "1000"}, 1) {
+		t.Fatalf("expected orchagent process info metric")
+	}
+
+	processCPUFamily := getMetricFamily(t, platformCollector, "sonic_platform_process_cpu_percent")
+	if !metricWithLabelsExists(processCPUFamily, map[string]string{"pid": "42", "process": "orchagent"}, 1.5) {
+		t.Fatalf("expected orchagent cpu metric")
+	}
+
+	storageFamily := getMetricFamily(t, platformCollector, "sonic_platform_storage_health_percent")
+	if !metricWithLabelsExists(storageFamily, map[string]string{"device": "sda"}, 100) {
+		t.Fatalf("expected storage health metric for sda")
+	}
+
+	systemHealthFamily := getMetricFamily(t, platformCollector, "sonic_platform_system_health_info")
+	if !metricWithLabelsExists(systemHealthFamily, map[string]string{"summary": "summary=OK"}, 1) {
+		t.Fatalf("expected system health summary metric")
 	}
 }
 

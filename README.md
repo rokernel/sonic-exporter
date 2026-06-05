@@ -38,7 +38,7 @@ flowchart LR
 
     subgraph sonic-exporter
         M[cmd/sonic-exporter/main.go]
-        COL[Collectors\ninterface, hw, crm, queue, lldp, vlan, lag, fdb\nsystem*, docker*, frr*]
+        COL[Collectors\ninterface, hw, crm, queue, lldp, vlan, lag, fdb\nswitch, thermal, transceiver\nrouting*, platform*, system*, docker*, frr*]
         CACHE[(In-memory metric cache)]
         NODE[node_exporter subset\nloadavg,cpu,diskstats,filesystem,meminfo,time,stat]
     end
@@ -81,6 +81,11 @@ For a deeper breakdown, see `docs/architecture.md`.
 | LLDP | LLDP neighbors from Redis | Enabled |
 | VLAN | VLAN and VLAN member state | Enabled |
 | LAG | PortChannel and member state | Enabled |
+| Switch | Switch-level Redis state from `APPL_DB` `SWITCH_TABLE` | Enabled |
+| Thermal | ASIC and SFP max temperatures from `STATE_DB` | Enabled |
+| Transceiver | Transceiver status, flags, and thresholds from `STATE_DB` | Enabled |
+| Routing | Route and neighbor summaries from `APPL_DB` | Disabled (`ROUTING_ENABLED=false`) |
+| Platform Health | Process, storage, and system health metrics from `STATE_DB` | Disabled (`PLATFORM_HEALTH_ENABLED=false`) |
 | FDB | FDB summary from ASIC DB | Disabled (`FDB_ENABLED=false`) |
 | System (experimental) | Switch identity, software metadata, uptime | Disabled (`SYSTEM_ENABLED=false`) |
 | Docker (experimental) | Container runtime metrics from `STATE_DB` | Disabled (`DOCKER_ENABLED=false`) |
@@ -140,7 +145,7 @@ curl localhost:9101/metrics
 
 ### Docker deployment for SONiC
 
-Optional collectors stay opt in. Keep `SYSTEM_ENABLED=false`, `DOCKER_ENABLED=false`, and `FRR_ENABLED=false` unless you need them.
+Optional collectors stay opt in. Keep `ROUTING_ENABLED=false`, `PLATFORM_HEALTH_ENABLED=false`, `SYSTEM_ENABLED=false`, `DOCKER_ENABLED=false`, and `FRR_ENABLED=false` unless you need them.
 
 #### Recommended online switch flow
 
@@ -191,6 +196,8 @@ REDIS_NETWORK=tcp
 REDIS_PASSWORD=
 SONIC_DISABLED_METRICS=
 FDB_ENABLED=false
+ROUTING_ENABLED=false
+PLATFORM_HEALTH_ENABLED=false
 SYSTEM_ENABLED=false
 DOCKER_ENABLED=false
 FRR_ENABLED=false
@@ -212,6 +219,8 @@ sudo docker run -d \
   -e REDIS_NETWORK=tcp \
   -e SONIC_DISABLED_METRICS= \
   -e FDB_ENABLED=false \
+  -e ROUTING_ENABLED=false \
+  -e PLATFORM_HEALTH_ENABLED=false \
   -e SYSTEM_ENABLED=false \
   -e DOCKER_ENABLED=false \
   -e FRR_ENABLED=false \
@@ -244,7 +253,7 @@ Restart=always
 RestartSec=30
 ExecStartPre=/bin/sh -c 'until /usr/bin/redis-cli -h 127.0.0.1 -p 6379 ping | /bin/grep -q PONG; do sleep 2; done'
 ExecStartPre=-/usr/bin/docker rm -f sonic-exporter
-ExecStart=/usr/bin/docker run --name sonic-exporter --label app=sonic-exporter --label managed-by=systemd --restart no --network host -e REDIS_ADDRESS=127.0.0.1:6379 -e REDIS_NETWORK=tcp -e REDIS_PASSWORD= -e SONIC_DISABLED_METRICS= -e FDB_ENABLED=false -e SYSTEM_ENABLED=false -e DOCKER_ENABLED=false -e FRR_ENABLED=false ghcr.io/rokernel/sonic-exporter:v0.1.1
+ExecStart=/usr/bin/docker run --name sonic-exporter --label app=sonic-exporter --label managed-by=systemd --restart no --network host -e REDIS_ADDRESS=127.0.0.1:6379 -e REDIS_NETWORK=tcp -e REDIS_PASSWORD= -e SONIC_DISABLED_METRICS= -e FDB_ENABLED=false -e ROUTING_ENABLED=false -e PLATFORM_HEALTH_ENABLED=false -e SYSTEM_ENABLED=false -e DOCKER_ENABLED=false -e FRR_ENABLED=false ghcr.io/rokernel/sonic-exporter:v0.1.1
 ExecStop=-/usr/bin/docker stop sonic-exporter
 ExecStopPost=-/usr/bin/docker rm -f sonic-exporter
 
@@ -476,6 +485,52 @@ Be careful with broad patterns. A wide match can also hide health metrics such a
 | `FDB_MAX_ENTRIES` | Max ASIC FDB entries processed per refresh | `50000` |
 | `FDB_MAX_PORTS` | Max per-port FDB series exported | `1024` |
 | `FDB_MAX_VLANS` | Max per-VLAN FDB series exported | `4096` |
+
+### Switch collector
+
+| Variable | Description | Default |
+|---|---|---|
+| `SWITCH_ENABLED` | Enable switch collector | `true` |
+| `SWITCH_REFRESH_INTERVAL` | Cache refresh interval | `60s` |
+| `SWITCH_TIMEOUT` | Timeout for one refresh cycle | `2s` |
+| `SWITCH_MAX_ENTRIES` | Max switch table entries exported per refresh | `16` |
+
+### Thermal collector
+
+| Variable | Description | Default |
+|---|---|---|
+| `THERMAL_ENABLED` | Enable thermal collector | `true` |
+| `THERMAL_REFRESH_INTERVAL` | Cache refresh interval | `60s` |
+| `THERMAL_TIMEOUT` | Timeout for one refresh cycle | `2s` |
+
+### Transceiver collector
+
+| Variable | Description | Default |
+|---|---|---|
+| `TRANSCEIVER_ENABLED` | Enable transceiver collector | `true` |
+| `TRANSCEIVER_REFRESH_INTERVAL` | Cache refresh interval | `60s` |
+| `TRANSCEIVER_TIMEOUT` | Timeout for one refresh cycle | `2s` |
+| `TRANSCEIVER_MAX_PORTS` | Max transceiver ports exported per refresh | `1024` |
+
+### Routing collector
+
+| Variable | Description | Default |
+|---|---|---|
+| `ROUTING_ENABLED` | Enable routing collector | `false` |
+| `ROUTING_REFRESH_INTERVAL` | Cache refresh interval | `60s` |
+| `ROUTING_TIMEOUT` | Timeout for one refresh cycle | `2s` |
+| `ROUTING_MAX_NEIGHBORS` | Max neighbor entries exported per refresh | `50000` |
+| `ROUTING_MAX_ROUTES` | Max route entries exported per refresh | `200000` |
+
+### Platform health collector
+
+| Variable | Description | Default |
+|---|---|---|
+| `PLATFORM_HEALTH_ENABLED` | Enable platform health collector | `false` |
+| `PLATFORM_HEALTH_REFRESH_INTERVAL` | Cache refresh interval | `60s` |
+| `PLATFORM_HEALTH_TIMEOUT` | Timeout for one refresh cycle | `2s` |
+| `PLATFORM_HEALTH_MAX_PROCESSES` | Max process entries exported per refresh | `512` |
+| `PLATFORM_HEALTH_MAX_STORAGE_DEVICES` | Max storage devices exported per refresh | `128` |
 
 ### System collector (experimental)
 
@@ -714,7 +769,12 @@ SONIC_DISABLED_METRICS=
 LLDP_ENABLED=true
 VLAN_ENABLED=true
 LAG_ENABLED=true
+SWITCH_ENABLED=true
+THERMAL_ENABLED=true
+TRANSCEIVER_ENABLED=true
 FDB_ENABLED=false
+ROUTING_ENABLED=false
+PLATFORM_HEALTH_ENABLED=false
 SYSTEM_ENABLED=false
 DOCKER_ENABLED=false
 FRR_ENABLED=false
